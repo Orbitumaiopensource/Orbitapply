@@ -6,6 +6,19 @@ OrbitApply uses a coordinated fleet of AI agents to find matching jobs, research
 
 ---
 
+## Screenshots
+
+**Dashboard — run the full pipeline with one click**
+![Dashboard](screenshots/dashboard.png)
+
+**SCOUT Results — ranked job matches with fit scores**
+![SCOUT Results](screenshots/scout-results.png)
+
+**Pipeline — track every application through every stage**
+![Pipeline](screenshots/pipeline.png)
+
+---
+
 ## How the workflow works
 
 A single click of **Run** on the dashboard triggers ORBI, the master orchestrator. ORBI sequences all agents in order, streams live step-by-step progress to the UI, and produces a structured result at the end. Here is exactly what happens, in order.
