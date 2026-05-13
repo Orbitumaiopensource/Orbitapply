@@ -32,9 +32,18 @@ function fileSlug(str) {
     .slice(0, 50);
 }
 
-function getFirstName(profile) {
-  const name = profile?.name || 'Shuv';
-  return name.split(/\s+/)[0];
+function getFullNameSlug(profile) {
+  const name = (profile?.name || 'Candidate').trim();
+  return name.split(/\s+/).map(part =>
+    part.charAt(0).toUpperCase() + part.slice(1)
+  ).join('');
+}
+
+function getYearMonth() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  return `${yyyy}-${mm}`;
 }
 
 function getApplicationFolder(company, jobTitle) {
@@ -130,19 +139,25 @@ Return ONLY the cover letter text, no JSON wrapper.
   const appFolder = getApplicationFolder(job.company, job.title);
   if (!fs.existsSync(appFolder)) fs.mkdirSync(appFolder, { recursive: true });
 
-  const firstName = getFirstName(profile);
+  const nameSlug = getFullNameSlug(profile);
   const titleSlug = fileSlug(job.title);
   const companySlug = fileSlug(job.company);
+  const yearMonth = getYearMonth();
 
-  const resumeFileName = `${titleSlug}_${companySlug}_Resume_${firstName}.doc`;
-  const coverFileName = `${titleSlug}_${companySlug}_Coverletter_${firstName}.doc`;
+  // Naming standard:
+  //   Resume:       FirstLast_Resume_[Role]_Company_Name.YYYY-MM.doc
+  //   Cover letter: FirstLast_coverletter_[Role]_YYYY-MM.doc
+  const resumeFileName = `${nameSlug}_Resume_${titleSlug}_${companySlug}.${yearMonth}.doc`;
+  const coverFileName = `${nameSlug}_coverletter_${titleSlug}.${yearMonth}.doc`;
 
   const resumePath = path.join(appFolder, resumeFileName);
   const coverPath = path.join(appFolder, coverFileName);
+  const jobPath = path.join(appFolder, 'job.json');
   const metaPath = path.join(appFolder, 'metadata.json');
 
   fs.writeFileSync(resumePath, resumeMd, 'utf8');
   fs.writeFileSync(coverPath, coverLetter, 'utf8');
+  writeJSON(jobPath, job);
   writeJSON(metaPath, {
     jobId: job.id,
     company: job.company,
@@ -191,7 +206,7 @@ function getDocuments(jobId) {
       const folderPath = path.join(appsRoot, folder);
       const files = fs.readdirSync(folderPath);
       const resumeFile = files.find(f => f.includes('_Resume_') && f.endsWith('.doc'));
-      const coverFile = files.find(f => f.includes('_Coverletter_') && f.endsWith('.doc'));
+      const coverFile = files.find(f => (f.includes('_coverletter_') || f.includes('_Coverletter_')) && f.endsWith('.doc'));
       return {
         resume: resumeFile ? fs.readFileSync(path.join(folderPath, resumeFile), 'utf8') : null,
         cover: coverFile ? fs.readFileSync(path.join(folderPath, coverFile), 'utf8') : null,
@@ -218,7 +233,7 @@ function getAllApplications() {
         ...meta,
         folderName: folder,
         hasResume: files.some(f => f.includes('_Resume_') && f.endsWith('.doc')),
-        hasCover: files.some(f => f.includes('_Coverletter_') && f.endsWith('.doc')),
+        hasCover: files.some(f => (f.includes('_coverletter_') || f.includes('_Coverletter_')) && f.endsWith('.doc')),
       };
     })
     .filter(Boolean)
