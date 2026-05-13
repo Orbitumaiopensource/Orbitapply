@@ -107,33 +107,6 @@ function isJobDetailUrl(url) {
   return true;
 }
 
-// Senior AI role titles that match the target seniority level
-// Primary (first 6) — run at 'advanced' Tavily depth for higher coverage
-// Extended — run at 'basic' depth to keep spend reasonable
-const AI_ROLE_TERMS_PRIMARY = [
-  '"Director of AI"',
-  '"Head of AI"',
-  '"VP of AI"',
-  '"Agentic AI"',
-  '"AI Director"',
-  '"Chief AI Officer"',
-];
-
-const AI_ROLE_TERMS_EXTENDED = [
-  '"Senior Director of AI"',
-  '"AI Consulting"',
-  '"AI Technologist"',
-  '"AI Enablement"',
-  '"VP AI"',
-  '"AI Transformation"',
-  '"Director AI Automation"',
-  '"Head of Artificial Intelligence"',
-  '"AI Solutions"',
-  '"AI Strategist"',
-  '"AI Innovation Lead"',
-  '"AI Innovation"',
-  '"AI Lead"',
-];
 
 async function searchWithTavily(query, depth = 'basic') {
   try {
@@ -174,33 +147,46 @@ async function extractUrlWithTavily(url) {
 
 // Returns [{query, depth}] — 'advanced' for high-signal targeted queries,
 // 'basic' for broader/supplemental queries to keep Tavily spend reasonable.
-function buildSearchQueries(profile) {
+// goal: user-provided search term (e.g. "sales director"); drives primary queries.
+function buildSearchQueries(profile, goal = '') {
   const items = [];
   const atsStr = 'site:lever.co OR site:greenhouse.io OR site:jobs.ashbyhq.com OR site:myworkdayjobs.com';
   const adpStr = 'site:myjobs.adp.com OR site:linkedin.com/jobs';
 
-  // Queries 1-6: Primary terms — advanced depth for best coverage
-  for (const term of AI_ROLE_TERMS_PRIMARY) {
-    items.push({ query: `${term} remote job ${atsStr}`, depth: 'advanced' });
-  }
+  const goalTerm = (goal || '').trim();
+  const profileRoles = (profile.targetRoles || []);
 
-  // Queries 7-9: Profile target roles — basic depth
-  const profileRoles = (profile.targetRoles || []).slice(0, 3);
+  // Collect unique role terms — goal first (highest priority), then profile roles.
+  // The goal drives the search; profile roles supplement coverage.
+  const roleTerms = [];
+  if (goalTerm) roleTerms.push(goalTerm);
   for (const role of profileRoles) {
-    items.push({ query: `"${role}" apply now ${atsStr}`, depth: 'basic' });
+    const normalised = role.trim();
+    if (normalised && !roleTerms.some(r => r.toLowerCase() === normalised.toLowerCase())) {
+      roleTerms.push(normalised);
+    }
   }
 
-  // Queries 10-12: Agentic / automation / strategy combos — advanced depth
-  items.push({ query: `"Agentic AI" Director OR Head OR VP remote ${atsStr}`, depth: 'advanced' });
-  items.push({ query: `"AI Automation" Director OR "Head of AI" remote ${atsStr}`, depth: 'advanced' });
-  items.push({ query: `"AI Strategy" Director OR Head remote ${atsStr}`, depth: 'advanced' });
-
-  // Queries 13-15: Extended role terms (ATS + ADP + LinkedIn) — basic depth
-  for (const term of AI_ROLE_TERMS_EXTENDED.slice(0, 2)) {
-    items.push({ query: `${term} remote job ${atsStr}`, depth: 'basic' });
+  // Generate ATS + ADP/LinkedIn queries for each role term.
+  // Goal gets 'advanced' depth; supplemental profile roles get 'basic' depth.
+  for (let i = 0; i < roleTerms.length && items.length < 12; i++) {
+    const term = roleTerms[i];
+    const isGoal = i === 0 && Boolean(goalTerm);
+    const depth = isGoal ? 'advanced' : 'basic';
+    items.push({ query: `"${term}" remote job ${atsStr}`, depth });
+    items.push({ query: `"${term}" apply now ${adpStr}`, depth: 'basic' });
+    if (isGoal) {
+      // Extra advanced query to maximise ATS coverage for the goal term
+      items.push({ query: `"${term}" hiring remote ${atsStr}`, depth: 'advanced' });
+    }
   }
-  // Dedicated ADP + LinkedIn sweep for Lead-level AI roles missed by ATS-only queries
-  items.push({ query: `"AI Innovation Lead" OR "AI Lead" OR "AI Innovation" remote ${adpStr}`, depth: 'basic' });
+
+  // Fill any remaining slots with a broader sweep for the primary term
+  const primaryTerm = goalTerm || profileRoles[0] || '';
+  if (primaryTerm && items.length < 15) {
+    items.push({ query: `"${primaryTerm}" job opening ${atsStr}`, depth: 'basic' });
+    items.push({ query: `"${primaryTerm}" remote position ${adpStr}`, depth: 'basic' });
+  }
 
   return items.slice(0, 15);
 }
@@ -306,15 +292,6 @@ function extractSalary(snippet) {
 
 // ─── Fit scoring (pure JS, no AI) ─────────────────────────────────────────
 
-// High-signal AI seniority keywords — any match boosts title score significantly
-const SENIOR_AI_SIGNALS = [
-  'agentic', 'ai director', 'director of ai', 'head of ai', 'vp of ai', 'vp ai',
-  'chief ai', 'ai strategy', 'ai strategist', 'ai transformation', 'ai automation',
-  'ai solutions', 'ai consulting', 'ai enablement', 'ai services',
-  'artificial intelligence director', 'machine learning director',
-  'generative ai', 'llm', 'ai platform', 'ai product',
-  'ai innovation', 'innovation lead', 'ai lead', 'ai technologist',
-];
 
 // Low-signal patterns — aggregator pages / mismatches — penalise these
 const NOISE_PATTERNS = [
@@ -325,7 +302,7 @@ const NOISE_PATTERNS = [
   /\breviews?\b/i,             // company review pages
 ];
 
-function scoreFit(jobTitle, location, salary, fullText, profile) {
+function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
   const targetRoles = (profile.targetRoles || []).map(r => r.toLowerCase());
   const targetLocations = (profile.targetLocations || []).map(l => l.toLowerCase().trim()).filter(Boolean);
   const skills = (profile.skills || []).map(s => s.toLowerCase());
@@ -340,12 +317,18 @@ function scoreFit(jobTitle, location, salary, fullText, profile) {
   // Title match — 0 to 35
   let titleMatch = 0;
 
-  // Senior AI signal boost: direct match on high-confidence terms
-  const seniorHits = SENIOR_AI_SIGNALS.filter(s => jobLower.includes(s) || textLower.includes(s));
-  if (seniorHits.length >= 2) titleMatch = 35;
-  else if (seniorHits.length === 1) titleMatch = 28;
+  // Goal-term match: if a search goal was specified, it is the primary signal.
+  // All words in the goal must appear in the job title for a full score.
+  if (goal) {
+    const goalWords = goal.toLowerCase().trim().split(/\s+/).filter(w => w.length > 2);
+    if (goalWords.length > 0) {
+      const goalMatched = goalWords.filter(w => jobLower.includes(w));
+      const goalScore = Math.round((goalMatched.length / goalWords.length) * 35);
+      if (goalScore > titleMatch) titleMatch = goalScore;
+    }
+  }
 
-  // Profile role word overlap (fallback / supplement)
+  // Profile role word overlap — supplements or replaces goal scoring
   for (const role of targetRoles) {
     const words = role.split(/\s+/).filter(w => w.length > 2);
     const matched = words.filter(w => jobLower.includes(w));
@@ -406,7 +389,7 @@ function scoreFit(jobTitle, location, salary, fullText, profile) {
 
 // ─── Main extraction (replaces Claude call) ───────────────────────────────
 
-function extractAndScoreJobs(rawResults, profile) {
+function extractAndScoreJobs(rawResults, profile, goal = '') {
   const seen = new Set();
   const jobs = [];
 
@@ -422,7 +405,7 @@ function extractAndScoreJobs(rawResults, profile) {
     const platform = getPlatform(r.url);
     const fullText = `${r.title} ${snippet}`.toLowerCase();
 
-    const breakdown = scoreFit(jobTitle, location, salary, fullText, profile);
+    const breakdown = scoreFit(jobTitle, location, salary, fullText, profile, goal);
     const fitScore = Object.values(breakdown).reduce((a, b) => a + b, 0);
 
     if (fitScore < MIN_DISPLAY_SCORE) return;
@@ -454,10 +437,10 @@ function extractAndScoreJobs(rawResults, profile) {
 
 // ─── runScout ─────────────────────────────────────────────────────────────
 
-async function runScout() {
+async function runScout(goal = '') {
   const profile = readJSON(PROFILE_PATH, {});
 
-  if (!profile.targetRoles?.length) {
+  if (!profile.targetRoles?.length && !goal.trim()) {
     return { error: 'No target roles found in profile. Please complete your profile setup first.' };
   }
 
@@ -465,7 +448,7 @@ async function runScout() {
     return { error: 'TAVILY_API_KEY is not set in .env. Add it to run job searches.' };
   }
 
-  const queries = buildSearchQueries(profile);
+  const queries = buildSearchQueries(profile, goal);
   const rawResults = [];
 
   logger.info(`[SCOUT] Running ${queries.length} Tavily searches in parallel`);
@@ -487,7 +470,7 @@ async function runScout() {
 
   logger.info(`[SCOUT] ${rawResults.length} raw results from Tavily — scoring locally`);
 
-  const scored = filterScoutResults(extractAndScoreJobs(rawResults, profile));
+  const scored = filterScoutResults(extractAndScoreJobs(rawResults, profile, goal));
 
   const today = new Date().toISOString().split('T')[0];
   const ws = getScoutWorkspace();

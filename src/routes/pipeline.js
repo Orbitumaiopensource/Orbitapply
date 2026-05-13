@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { logger } = require('../utils/logger');
 const ledger = require('../services/ledger');
+const { runCoach } = require('../services/coach');
 const { PIPELINE_STAGES } = require('../utils/constants');
 
 router.get('/', (req, res) => {
@@ -39,6 +40,15 @@ router.patch('/:id/status', (req, res) => {
     }
     const result = ledger.updateStatus(req.params.id, status);
     res.json(result);
+
+    if (result.coachTrigger) {
+      const application = ledger.getById(req.params.id);
+      if (application) {
+        runCoach(application).catch(err =>
+          logger.error(`[COACH] Failed to generate prep pack for ${req.params.id}: ${err.message}`, err)
+        );
+      }
+    }
   } catch (err) {
     logger.error(`PATCH /pipeline/:id/status failed: ${err.message}`, err);
     res.status(500).json({ error: 'Failed to update status.' });

@@ -84,7 +84,7 @@ function isApiLimitError(err) {
 async function executeRun(sessionId, goal) {
   try {
     updateStep('SCOUT: Job Discovery');
-    const scoutOutput = await runScout();
+    const scoutOutput = await runScout(goal);
     if (scoutOutput.error) {
       currentRun.error = scoutOutput.error;
       failStep('SCOUT: Job Discovery');
