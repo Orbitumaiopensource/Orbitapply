@@ -1,0 +1,74 @@
+name: 🎉 I Got Hired!
+description: Share your success story using OrbitApply
+title: "🎉 Got hired as [ROLE] at [COMPANY]"
+labels: ["success-story"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Congratulations! 🎉
+        Share your story to inspire others and help improve OrbitApply.
+
+  - type: input
+    id: role
+    attributes:
+      label: What role did you land?
+      placeholder: e.g. Director of AI, Head of Engineering
+    validations:
+      required: true
+
+  - type: input
+    id: company
+    attributes:
+      label: Company (optional — leave blank if you prefer)
+      placeholder: e.g. Series B SaaS startup
+
+  - type: dropdown
+    id: applications
+    attributes:
+      label: How many applications did OrbitApply help you send?
+      options:
+        - 1-5
+        - 6-15
+        - 16-30
+        - 30+
+    validations:
+      required: true
+
+  - type: dropdown
+    id: time
+    attributes:
+      label: How long did your job search take?
+      options:
+        - Less than 2 weeks
+        - 2-4 weeks
+        - 1-2 months
+        - 2-3 months
+        - 3+ months
+    validations:
+      required: true
+
+  - type: textarea
+    id: story
+    attributes:
+      label: Your story
+      description: What worked? What would you tell someone just starting out?
+      placeholder: Share whatever you're comfortable with...
+    validations:
+      required: true
+
+  - type: textarea
+    id: improvements
+    attributes:
+      label: What could OrbitApply do better?
+      description: Your feedback directly shapes the roadmap.
+      placeholder: Optional but very helpful...
+
+  - type: checkboxes
+    id: share
+    attributes:
+      label: Can we share your story?
+      options:
+        - label: Yes — you can share this story in the README and on social media
+        - label: Yes — but please keep my name and company anonymous
+        - label: No — keep this private
