@@ -74,6 +74,10 @@ const AGGREGATOR_SEARCH_URL_PATTERNS = [
   /glassdoor\.com\/Jobs\//i,
   /linkedin\.com\/jobs\/search/i,
   /linkedin\.com\/jobs\/results/i,
+  // ZipRecruiter browse/search pages ("Browse N jobs…") — not a single posting.
+  // Real listings live at ziprecruiter.com/c/<company>/Job/… or /jobs/<id>
+  /ziprecruiter\.com\/Jobs\/[A-Za-z-]+\/?$/i,
+  /ziprecruiter\.com\/candidate\/search/i,
 ];
 
 function isJobDetailUrl(url) {
@@ -126,7 +130,64 @@ function capitalise(str) {
 // getPlatform powered by jobSites.js config
 const getPlatform = getPlatformFromUrl;
 
-function extractCompany(url, title) {
+// Job boards / aggregators — never a real employer name
+const JOB_BOARDS = [
+  'ziprecruiter', 'indeed', 'glassdoor', 'linkedin', 'lever', 'greenhouse',
+  'workday', 'smartrecruiters', 'jobvite', 'built in', 'builtin', 'bebee',
+  'dice', 'monster', 'simplyhired', 'talent.com', 'talent', 'adzuna', 'jooble',
+  'careerbuilder', 'snagajob', 'wellfound', 'angellist', 'otta', 'remote.co',
+  'we work remotely', 'flexjobs', 'jobright', 'himalayas', 'jobs', 'careers',
+  'career site', 'hiring', 'now hiring', 'apply now', 'remote', 'unspecified',
+  'remotive', 'virtual vocations', 'icims', 'candidate portal', 'candidate',
+  'portal', 'section', 'recruiting', 'recruiter', 'staffing', 'talent acquisition',
+  'job opportunity', 'opportunity', 'position', 'opening', 'vacancy',
+];
+
+// words that signal the segment is a location / board / generic, not an employer
+const COMPANY_REJECT = /\b(?:portal|vocations|remotive|icims|remote|hybrid|onsite|on-site|united states|united kingdom|usa|u\.s\.|europe|apac|emea|anywhere|worldwide|contract|full[- ]time|part[- ]time|freelance|intern(?:ship)?)\b/i;
+
+function cleanCompany(raw) {
+  let c = (raw || '')
+    .replace(/\b(?:career site|careers|jobs?|openings?|hiring|now hiring)\b/gi, '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/\b(?:NOW HIRING|APPLY NOW).*$/i, '')
+    .replace(/[,|\-–—:]+\s*$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  if (c.length < 2 || c.length > 50) return null;
+  if (c.includes('@') || /\d{2,}/.test(c)) return null;        // domains / pay rates
+  if (JOB_BOARDS.includes(c.toLowerCase())) return null;
+  if (COMPANY_REJECT.test(c)) return null;
+  if (/,/.test(c)) return null;                                 // location-like "City, ST"
+  if (c.split(/\s+/).length > 5) return null;                   // too long to be a name
+  if (!/[A-Z]/.test(c)) return null;                            // needs a proper-noun cap
+  return c;
+}
+
+// Last-resort: pull an employer name out of the job snippet/body text.
+// Only strong, low-ambiguity signals — noisy nav text must not leak through.
+function extractCompanyFromSnippet(snippet) {
+  const s = (snippet || '').replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+
+  // "@brand.ai" / "brand.io is hiring" — domain-style company handle
+  const dom = s.match(/@?\b([a-z][a-z0-9-]{1,30}\.(?:ai|io|com|co|app|dev))\b\s+is\s+hiring/i)
+    || s.match(/@\b([a-z][a-z0-9-]{1,30}\.(?:ai|io|com|co|app|dev))\b/i);
+  if (dom) {
+    const label = dom[1].split('.')[0];
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  }
+
+  // "<Name> is the #1 / a / an / hiring / looking for" — introduces the employer
+  const intro = s.match(/\b([A-Z][A-Za-z0-9&.'’-]+(?:\s+[A-Z][A-Za-z0-9&.'’-]+){0,3})\s+is\s+(?:the\s+#?1|an?\s|hiring\b|looking\s+for)/);
+  if (intro) {
+    const c = cleanCompany(intro[1]);
+    if (c) return c;
+  }
+  return null;
+}
+
+function extractCompany(url, title, snippet = '') {
   try {
     const u = new URL(url);
     const host = u.hostname;
@@ -149,27 +210,78 @@ function extractCompany(url, title) {
     if (host.includes('builtin.com')) return capitalise(parts[1] || '');
   } catch {}
 
-  const atMatch = title.match(/\bat\s+([A-Z][A-Za-z0-9\s&.,']+?)(?:\s*[|\-—]|$)/);
-  if (atMatch) return atMatch[1].trim().slice(0, 60);
+  const t = (title || '').trim();
 
-  const dashMatch = title.match(/[-—]\s*([A-Z][A-Za-z0-9\s&.,]+?)\s*[|]/);
-  if (dashMatch) return dashMatch[1].trim().slice(0, 60);
+  // "@Company" or "@ Company"  e.g. "[Hiring] … Consultant @Cox Enterprises"
+  // (title patterns are tried before the domain fallback below)
+  const atSign = t.match(/@\s*([A-Z][\w&.,'’\- ]+?)(?:\s*[|\-–—:]|\s*$)/);
+  if (atSign && cleanCompany(atSign[1])) return cleanCompany(atSign[1]);
+
+  // "Company hiring …" / "Company is hiring …"  e.g. "Lenovo hiring Head of AI …"
+  const leadHiring = t.match(/^([A-Z][\w&.,'’\- ]+?)\s+(?:is\s+)?hiring\b/i);
+  if (leadHiring && cleanCompany(leadHiring[1])) return cleanCompany(leadHiring[1]);
+
+  // "… at Company"
+  const atWord = t.match(/\bat\s+([A-Z][\w&.,'’\- ]+?)(?:\s*[|\-–—:]|\s*$)/);
+  if (atWord && cleanCompany(atWord[1])) return cleanCompany(atWord[1]);
+
+  // Trailing "- Company" / "— Company" / "| Company" (last segment), e.g.
+  // "Senior AI Transformation Consultant - Blue Orange Digital career site"
+  const segs = t.split(/\s+[|\-–—]\s+/).map(s => s.trim()).filter(Boolean);
+  if (segs.length > 1) {
+    for (let i = segs.length - 1; i >= 1; i--) {
+      const cand = cleanCompany(segs[i]);
+      if (cand) return cand;
+    }
+  }
+
+  const fromSnippet = extractCompanyFromSnippet(snippet);
+  if (fromSnippet) return fromSnippet;
+
+  // Known company-owned career hosts only (jobs.<co>.com / careers.<co>.com).
+  // Generic aggregator/ATS domains are intentionally NOT guessed — a wrong
+  // company name is worse than "Unknown" since it flows into folders/letters.
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    const careerHost = host.match(/^(?:jobs|careers)\.([a-z0-9-]+)\.[a-z.]+$/i);
+    const NON_EMPLOYER = [
+      'ceipal', 'icims', 'gartner-careers', 'lever', 'greenhouse', 'ashbyhq',
+      'smartrecruiters', 'jobvite', 'workday', 'myworkdayjobs', 'adp',
+      'euremotejobs', 'dailyremote', 'theirstack', 'jora', 'lensa',
+    ];
+    if (careerHost && !NON_EMPLOYER.includes(careerHost[1].toLowerCase())
+        && careerHost[1].length > 2) {
+      return capitalise(careerHost[1]);
+    }
+  } catch {}
 
   return 'Unknown';
 }
 
 function extractJobTitle(rawTitle, company) {
-  let t = rawTitle
-    .replace(/\s*[|]\s*(Indeed|Glassdoor|LinkedIn|Lever|Greenhouse|Workday|SmartRecruiters|Jobvite|Built In).*$/i, '')
-    .replace(/\s*[-—]\s*(Indeed|Glassdoor|LinkedIn).*$/i, '');
+  let t = (rawTitle || '')
+    .replace(/^\s*\[[^\]]*\]\s*/i, '')                 // leading "[Hiring] "
+    .replace(/\s*[|]\s*(Indeed|Glassdoor|LinkedIn|Lever|Greenhouse|Workday|SmartRecruiters|Jobvite|Built In|ZipRecruiter).*$/i, '')
+    .replace(/\s*[-—]\s*(Indeed|Glassdoor|LinkedIn|ZipRecruiter).*$/i, '')
+    .replace(/@\s*[A-Z][\w&.,'’\- ]+$/i, '')           // trailing "@Company"
+    .replace(/\b(?:career site|careers)\b/gi, '')      // "… career site"
+    .replace(/\s*\(NOW HIRING\).*$/i, '')
+    .replace(/^([A-Z][\w&.,'’\- ]+?)\s+(?:is\s+)?hiring\s+/i, ''); // "Lenovo hiring "
 
   if (company && company !== 'Unknown') {
     const safeCompany = company.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     t = t
+      .replace(new RegExp(`\\s*@\\s*${safeCompany}.*$`, 'i'), '')
       .replace(new RegExp(`\\s+at\\s+${safeCompany}.*$`, 'i'), '')
-      .replace(new RegExp(`\\s*[-—]\\s*${safeCompany}.*$`, 'i'), '');
+      .replace(new RegExp(`\\s*[|\\-–—]\\s*${safeCompany}.*$`, 'i'), '');
   }
-  return t.trim().slice(0, 120) || rawTitle.slice(0, 120);
+  t = t
+    .replace(/\s*[-–—(]\s*remote\s*\)?\s*$/i, '')   // trailing "- Remote" / "(Remote)"
+    .replace(/\s+jobs?\s*$/i, '')                    // trailing " Jobs"
+    .replace(/[\s,|\-–—:]+$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return t.slice(0, 120) || (rawTitle || '').slice(0, 120);
 }
 
 function extractLocation(snippet, titleHint = '') {
@@ -318,9 +430,9 @@ function extractAndScoreJobs(rawResults, profile, goal = '') {
     if (seen.has(r.url)) return;
     seen.add(r.url);
 
-    const company = extractCompany(r.url, r.title || '');
-    const jobTitle = extractJobTitle(r.title || '', company);
     const snippet = (r.snippet || '').slice(0, 400);
+    const company = extractCompany(r.url, r.title || '', snippet);
+    const jobTitle = extractJobTitle(r.title || '', company);
     const location = extractLocation(snippet, jobTitle);
     const salary = extractSalary(snippet);
     const platform = getPlatform(r.url);
@@ -425,7 +537,7 @@ async function importJob({ url, title = '', company = '', salary = '' }) {
     if (!resolvedTitle) resolvedTitle = (extracted.title || '').slice(0, 120).trim();
   }
 
-  const resolvedCompany = company.trim() || extractCompany(url, resolvedTitle);
+  const resolvedCompany = company.trim() || extractCompany(url, resolvedTitle, snippet);
   const jobTitle = resolvedTitle || extractJobTitle(url.split('/').pop() || 'Unknown Role', resolvedCompany);
   const jobSalary = salary.trim() || extractSalary(snippet);
   const location = extractLocation(snippet, jobTitle);

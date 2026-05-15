@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const PDFDocument = require('pdfkit');
 const { runAgent, parseJSONFromContent } = require('./agentBase');
 const { readJSON, writeJSON } = require('../utils/fileStore');
 const { logger } = require('../utils/logger');
@@ -47,7 +48,7 @@ function getYearMonth() {
 }
 
 function getApplicationFolder(company, jobTitle) {
-  const folderName = `${slugify(company)} — ${slugify(jobTitle)}`;
+  const folderName = `${slugify(company)} - ${slugify(jobTitle)}`;
   return path.join(getApplicationsRoot(), folderName);
 }
 
@@ -58,9 +59,218 @@ function getBaseResume(profile) {
   return profile.resume?.summary || 'No base resume found. Please upload a resume in your profile.';
 }
 
+// ─── PDF GENERATOR ────────────────────────────────────────────────────────────
+function safe(str) {
+  return (str || '').replace(/[^\x20-\x7E]/g, '').trim();
+}
+
+function drawRule(doc, x, y, w, color, thickness) {
+  doc.save().strokeColor(color || '#CCCCCC').lineWidth(thickness || 0.5)
+    .moveTo(x, y).lineTo(x + w, y).stroke().restore();
+}
+
+async function generatePDF(resumeText, coverText, outputFolder, nameSlug, titleSlug, yearMonth) {
+  const resumePdfPath = path.join(outputFolder, `${nameSlug}_Resume_${titleSlug}.${yearMonth}.pdf`);
+  const coverPdfPath = path.join(outputFolder, `${nameSlug}_CoverLetter_${titleSlug}.${yearMonth}.pdf`);
+
+  await buildResumePDF(resumeText, resumePdfPath);
+  await buildCoverPDF(coverText, coverPdfPath);
+
+  return { resumePdfPath, coverPdfPath };
+}
+
+async function buildResumePDF(text, outputPath) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true });
+    const stream = fs.createWriteStream(outputPath);
+    doc.pipe(stream);
+
+    const W = 595, H = 842;
+    const ML = 50, MR = 50, MW = W - ML - MR;
+    const TOP = 60, BOTTOM = 792;          // body content bounds (below header, above footer)
+    const ACCENT = '#1A3C5E';
+    const ACCENT_SOFT = '#5B7B99';
+    const DARK = '#1A1A1A';
+    const MID = '#3F3F3F';
+    const LIGHT = '#7A7A7A';
+    let y = 0;
+
+    const SECTION_HEADERS = [
+      'EXECUTIVE SUMMARY', 'PROFESSIONAL SUMMARY', 'SUMMARY',
+      'CORE COMPETENCIES', 'SKILLS', 'PROFESSIONAL EXPERIENCE',
+      'EXPERIENCE', 'KEY AI DELIVERY PROJECTS', 'KEY PROJECTS', 'PROJECTS',
+      'EDUCATION & CERTIFICATIONS', 'EDUCATION', 'CERTIFICATIONS', 'EARLIER CAREER',
+    ];
+    const isSectionHeader = (l) =>
+      l.length < 48 && SECTION_HEADERS.some(h => l.toUpperCase() === h || l.toUpperCase().startsWith(h));
+
+    // Draw the colored name/title/contact band at the top of a page
+    function drawHeaderBand(name, title, contact) {
+      doc.rect(0, 0, W, 96).fill(ACCENT);
+      doc.fontSize(22).fillColor('#FFFFFF').font('Helvetica-Bold')
+        .text(safe(name), ML, 22, { width: MW });
+      doc.fontSize(11).fillColor('#C7D6E5').font('Helvetica')
+        .text(safe(title), ML, 50, { width: MW });
+      doc.fontSize(8.5).fillColor('#9FB6CC').font('Helvetica')
+        .text(safe(contact).replace(/\s*\|\s*/g, '   •   '), ML, 70, { width: MW });
+    }
+
+    function newPage() {
+      doc.addPage();
+      y = TOP;
+    }
+    // Ensure `need` vertical px are available before drawing; page-break if not.
+    function ensure(need) {
+      if (y + need > BOTTOM) newPage();
+    }
+
+    const rawLines = text.split('\n').map(l => l.trim());
+    const lines = rawLines.filter(Boolean);
+
+    // First 3 non-empty lines = name / title / contact
+    const name = lines[0] || 'Candidate';
+    const title = lines[1] || '';
+    const contact = lines[2] || '';
+    drawHeaderBand(name, title, contact);
+    y = 96 + 20;
+
+    const body = lines.slice(3);
+
+    for (let i = 0; i < body.length; i++) {
+      const line = body[i];
+
+      // ── Section header ──
+      if (isSectionHeader(line)) {
+        ensure(46);
+        y += 6;
+        doc.fontSize(10).fillColor(ACCENT).font('Helvetica-Bold')
+          .text(safe(line.toUpperCase()), ML, y, { width: MW, characterSpacing: 1 });
+        y = doc.y + 4;
+        drawRule(doc, ML, y, MW, ACCENT, 1);
+        y += 12;
+        continue;
+      }
+
+      // ── Bullet point ──
+      if (line.startsWith('•') || line.startsWith('-')) {
+        const bulletText = safe(line.replace(/^[•\-]\s*/, ''));
+        const txtW = MW - 14;
+        const need = doc.heightOfString(bulletText, { width: txtW, lineGap: 1.5 });
+        ensure(need + 4);
+        doc.fontSize(9).fillColor(ACCENT_SOFT).font('Helvetica-Bold')
+          .text('•', ML, y, { width: 10 });
+        doc.fontSize(9).fillColor(MID).font('Helvetica')
+          .text(bulletText, ML + 14, y, { width: txtW, lineGap: 1.5 });
+        y = doc.y + 4;
+        continue;
+      }
+
+      // ── Job / role line: "Title | Company | Dates" ──
+      if (line.includes(' | ')) {
+        const [jobTitle, company = '', dates = ''] = line.split(' | ').map(s => s.trim());
+        // Keep the role header attached to its first bullet (no orphan headers).
+        const nextIsBullet = (body[i + 1] || '').startsWith('•') || (body[i + 1] || '').startsWith('-');
+        ensure(nextIsBullet ? 64 : 34);
+        y += 4;
+        doc.fontSize(10.5).fillColor(DARK).font('Helvetica-Bold')
+          .text(safe(jobTitle), ML, y, { width: MW - 120, continued: false });
+        if (dates) {
+          doc.fontSize(9).fillColor(ACCENT).font('Helvetica')
+            .text(safe(dates), ML + MW - 120, y, { width: 120, align: 'right' });
+        }
+        y = doc.y + 1;
+        if (company) {
+          doc.fontSize(9.5).fillColor(LIGHT).font('Helvetica-Oblique')
+            .text(safe(company), ML, y, { width: MW });
+          y = doc.y + 5;
+        }
+        continue;
+      }
+
+      // ── Regular paragraph / sub-heading ──
+      const isSub = line.length < 50 && !/[.;,]$/.test(line) && !line.includes(',')
+        && line.split(/\s+/).length <= 6 && /^[A-Z0-9]/.test(line);
+      const txt = safe(line);
+      const need = doc.heightOfString(txt, { width: MW, lineGap: 1.5 });
+      ensure(need + 4);
+      if (isSub) {
+        doc.fontSize(9).fillColor(ACCENT).font('Helvetica-Bold')
+          .text(txt, ML, y, { width: MW });
+        y = doc.y + 3;
+      } else {
+        doc.fontSize(9).fillColor(MID).font('Helvetica')
+          .text(txt, ML, y, { width: MW, lineGap: 1.5 });
+        y = doc.y + 4;
+      }
+    }
+
+    // ── Footer + page numbers on every page ──
+    const range = doc.bufferedPageRange();
+    for (let p = 0; p < range.count; p++) {
+      doc.switchToPage(range.start + p);
+      drawRule(doc, ML, H - 40, MW, '#D8DEE5', 0.5);
+      doc.fontSize(7.5).fillColor(LIGHT).font('Helvetica')
+        .text(safe(name), ML, H - 33, { width: MW / 2 });
+      doc.fontSize(7.5).fillColor(LIGHT).font('Helvetica')
+        .text(`Page ${p + 1} of ${range.count}`, ML + MW / 2, H - 33, { width: MW / 2, align: 'right' });
+    }
+
+    doc.end();
+    stream.on('finish', () => resolve(outputPath));
+    stream.on('error', reject);
+  });
+}
+
+async function buildCoverPDF(text, outputPath) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 0 });
+    const stream = fs.createWriteStream(outputPath);
+    doc.pipe(stream);
+
+    const W = 595, ML = 64, MW = W - ML - 64;
+    const ACCENT = '#1A3C5E';
+    const MID = '#333333';
+
+    // Header bar
+    doc.rect(0, 0, W, 8).fill(ACCENT);
+
+    let y = 48;
+    const lines = text.split('\n');
+
+    lines.forEach(rawLine => {
+      if (y > 800) { doc.addPage(); y = 40; }
+      const line = rawLine.trim();
+      if (!line) { y += 8; return; }
+
+      doc.fontSize(9.5).fillColor(MID).font('Helvetica')
+        .text(safe(line), ML, y, { width: MW, lineGap: 3 });
+      y = doc.y + 4;
+    });
+
+    // Footer bar
+    doc.rect(0, 830, W, 12).fill(ACCENT);
+
+    doc.end();
+    stream.on('finish', () => resolve(outputPath));
+    stream.on('error', reject);
+  });
+}
+
+// ─── MAIN TAILOR FUNCTION ─────────────────────────────────────────────────────
+function inferIndustry(job, profile, reconIntel) {
+  const targets = (profile.targetIndustries || []);
+  const haystack = `${job.title || ''} ${job.company || ''} ${job.snippet || ''} ${reconIntel?.industry || ''}`.toLowerCase();
+  const match = targets.find(ind => haystack.includes(ind.toLowerCase()));
+  return match || targets[0] || 'Technology';
+}
+
 async function runTailor(job, reconIntel = null, sessionId = null) {
   const profile = readJSON(PROFILE_PATH, {});
   const baseResume = getBaseResume(profile);
+  const industry = inferIndustry(job, profile, reconIntel);
+  const educationLines = (profile.education || [])
+    .map(e => `${e.degree} — ${e.school}${e.year ? ` | ${e.year}` : ''}`)
+    .join('\n');
 
   const reconContext = reconIntel ? `
 COMPANY INTELLIGENCE:
@@ -72,43 +282,92 @@ COMPANY INTELLIGENCE:
 - Red Flags: ${(reconIntel.redFlags || []).join('; ') || 'none'}
 ` : '';
 
+  // ── RESUME PROMPT ──────────────────────────────────────────────────────────
   const resumePrompt = `
-JOB TITLE: ${job.title}
-COMPANY: ${job.company}
-JOB URL: ${job.url}
-JOB DESCRIPTION EXCERPT: ${job.snippet || ''}
+You are an expert resume writer and ATS optimization specialist.
+
+JOB TARGET:
+- Title: ${job.title}
+- Company: ${job.company}
+- Description: ${job.snippet || 'Not provided'}
+${reconContext}
+
+TARGET INDUSTRY: ${industry}
+(Tailor terminology, domain examples, and keyword emphasis toward the ${industry} industry while staying factually accurate.)
 
 CANDIDATE PROFILE:
 - Name: ${profile.name}
 - Current Title: ${profile.title}
+- Location: ${profile.location || ''}
+- Email: ${profile.email || ''}
+- LinkedIn: ${profile.linkedinUrl || ''}
 - Skills: ${(profile.skills || []).join(', ')}
 - Years Experience: ${profile.yearsExperience}
 - ORBIT Positioning: ${profile.orbitPositioningStatement || 'AI Solutions Specialist delivering measurable outcomes'}
-${reconContext}
+- Education & Certifications:
+${educationLines || '(see base resume)'}
 
-BASE RESUME:
-${baseResume.slice(0, 3000)}
+COMPLETE BASE RESUME — use ALL sections, never truncate:
+${baseResume.slice(0, 16000)}
 
-TASK: Rewrite this resume for the specific role above.
-1. Mirror JD language while preserving factual accuracy
-2. Inject relevant keywords into skills section
-3. Rewrite bullet points to highlight relevant experience
-4. Add/strengthen ORBIT-framework positioning in summary
-5. Run internal ATS scoring (target >= 70/100)
+YOUR TASK:
+Rewrite this resume tailored for the job above.
 
-Return JSON:
+STRICT RULES:
+1. PRESERVE every single job title, company name, date, and certification — never drop any
+2. Mirror JD language naturally in Summary and Skills sections only
+3. Inject relevant keywords from the JD into Skills/Competencies section
+4. Rewrite Summary (3-4 sentences) to target this specific role and company
+5. Keep all bullet points factually accurate — reword only, never fabricate metrics
+6. Preserve the ORBIT Framework mention in Summary
+7. Output CLEAN PLAIN TEXT — absolutely NO markdown symbols (no ##, no **, no *, no _, no #)
+8. Use ALL CAPS for section headers
+9. Use the bullet character • for all bullet points
+10. Job lines must follow format: Job Title | Company Name | Start Year – End Year
+11. ALWAYS include the EDUCATION & CERTIFICATIONS section in full — never drop a degree or certification
+12. Frame the Summary and Core Competencies for the ${industry} industry without inventing experience
+
+EXACT OUTPUT STRUCTURE — follow this precisely:
+
+[Full Name]
+[Target Job Title for this role]
+[Location] • [Email] • [LinkedIn]
+
+EXECUTIVE SUMMARY
+[3-4 sentences targeting this role and company]
+
+CORE COMPETENCIES
+[Skill 1] • [Skill 2] • [Skill 3] • [Skill 4] • [Skill 5]
+[Skill 6] • [Skill 7] • [Skill 8] • [Skill 9] • [Skill 10]
+
+PROFESSIONAL EXPERIENCE
+
+[Job Title] | [Company Name] | [Start Year] – [End Year or Present]
+• [Achievement bullet 1]
+• [Achievement bullet 2]
+• [Achievement bullet 3]
+
+[Repeat above block for EVERY job — never skip any role]
+
+KEY AI DELIVERY PROJECTS
+[Project Name] | [Stack and outcome in one line]
+
+EDUCATION & CERTIFICATIONS
+• [Degree/Cert] — [Institution] | [Year]
+
+Return ONLY this JSON — no preamble, no explanation, no markdown:
 {
-  "atsScore": 82,
-  "keywordsInjected": ["keyword1", "keyword2"],
-  "resumeMarkdown": "# Full Name\\n## Summary\\n...",
-  "notes": "any caveats"
+  "atsScore": 85,
+  "keywordsInjected": ["keyword1", "keyword2", "keyword3"],
+  "resumeText": "[complete plain text resume exactly as structured above — all jobs included]",
+  "notes": "brief note on tailoring approach"
 }
 `;
 
-  const resumeResult = await runAgent('tailor', resumePrompt, sessionId);
-  const tailoredResume = parseJSONFromContent(resumeResult.content);
-
+  // ── COVER LETTER PROMPT ───────────────────────────────────────────────────
   const coverPrompt = `
+You are an expert cover letter writer using the ORBIT Framework.
+
 JOB: ${job.title} at ${job.company}
 JOB DESCRIPTION: ${job.snippet || ''}
 
@@ -117,25 +376,32 @@ CANDIDATE:
 - Title: ${profile.title}
 - ORBIT Statement: ${profile.orbitPositioningStatement || ''}
 - Key Skills: ${(profile.skills || []).slice(0, 10).join(', ')}
-- Cover Letter Tone: ${profile.coverLetterTone || 'orbit-framework'}
 ${reconContext}
 
-Write a cover letter using the ORBIT Framework structure:
-- Para 1 (Outcome): What specific result does this candidate deliver to ${job.company}?
-- Para 2 (Revenue Lever + Bottleneck): Why does ${job.company} need this person now?
-- Para 3 (Implement): Concrete 30-60-90 day plan for this role
-- Para 4 close (Track): 1-2 quantified past achievements
+Write a cover letter using the ORBIT Framework:
+• Para 1 (OUTCOME): Specific result this candidate delivers to ${job.company}
+• Para 2 (REVENUE LEVER + BOTTLENECK): Why ${job.company} needs this person now
+• Para 3 (IMPLEMENT): Concrete 30-60-90 day plan for this specific role
+• Para 4 (TRACK): 2-3 quantified past achievements as proof
 
-Rules: 250-350 words, no "I'm excited to apply", professional but human, direct.
-Return ONLY the cover letter text, no JSON wrapper.
+RULES:
+- 280-320 words total
+- Never start with "I am excited to apply" or "I am writing to apply"
+- Professional, direct, no filler phrases
+- No markdown symbols
+- Return ONLY the cover letter text — no subject line, no JSON wrapper
 `;
+
+  const resumeResult = await runAgent('tailor', resumePrompt, sessionId);
+  const tailoredResume = parseJSONFromContent(resumeResult.content);
 
   const coverResult = await runAgent('tailor', coverPrompt, `${sessionId}-cover`);
   const coverLetter = coverResult.content;
 
-  const resumeMd = tailoredResume?.resumeMarkdown || resumeResult.content;
+  // Use resumeText (new) or fall back to resumeMarkdown (legacy)
+  const resumeText = tailoredResume?.resumeText || tailoredResume?.resumeMarkdown || resumeResult.content;
 
-  // Save into applications/{Company — Job Title}/
+  // ── SAVE FILES ────────────────────────────────────────────────────────────
   const appFolder = getApplicationFolder(job.company, job.title);
   if (!fs.existsSync(appFolder)) fs.mkdirSync(appFolder, { recursive: true });
 
@@ -144,19 +410,28 @@ Return ONLY the cover letter text, no JSON wrapper.
   const companySlug = fileSlug(job.company);
   const yearMonth = getYearMonth();
 
-  // Naming standard:
-  //   Resume:       FirstLast_Resume_[Role]_Company_Name.YYYY-MM.doc
-  //   Cover letter: FirstLast_coverletter_[Role]_YYYY-MM.doc
-  const resumeFileName = `${nameSlug}_Resume_${titleSlug}_${companySlug}.${yearMonth}.doc`;
-  const coverFileName = `${nameSlug}_coverletter_${titleSlug}.${yearMonth}.doc`;
-
-  const resumePath = path.join(appFolder, resumeFileName);
-  const coverPath = path.join(appFolder, coverFileName);
   const jobPath = path.join(appFolder, 'job.json');
   const metaPath = path.join(appFolder, 'metadata.json');
 
-  fs.writeFileSync(resumePath, resumeMd, 'utf8');
-  fs.writeFileSync(coverPath, coverLetter, 'utf8');
+  // Generate PDFs
+  let resumePdfPath = null;
+  let coverPdfPath = null;
+  try {
+    const paths = await generatePDF(resumeText, coverLetter, appFolder, nameSlug, titleSlug, yearMonth);
+    resumePdfPath = paths.resumePdfPath;
+    coverPdfPath = paths.coverPdfPath;
+    logger.info(`[TAILOR] PDFs generated for ${job.company} - ${job.title}`);
+  } catch (pdfErr) {
+    logger.error(`[TAILOR] PDF generation failed: ${pdfErr.message}`);
+    // Fallback: save as plain text
+    const resumeFallback = path.join(appFolder, `${nameSlug}_Resume_${titleSlug}_${companySlug}.${yearMonth}.txt`);
+    const coverFallback = path.join(appFolder, `${nameSlug}_CoverLetter_${titleSlug}.${yearMonth}.txt`);
+    fs.writeFileSync(resumeFallback, resumeText, 'utf8');
+    fs.writeFileSync(coverFallback, coverLetter, 'utf8');
+    resumePdfPath = resumeFallback;
+    coverPdfPath = coverFallback;
+  }
+
   writeJSON(jobPath, job);
   writeJSON(metaPath, {
     jobId: job.id,
@@ -171,9 +446,11 @@ Return ONLY the cover letter text, no JSON wrapper.
     keywordsInjected: tailoredResume?.keywordsInjected || [],
     generatedAt: new Date().toISOString(),
     folder: appFolder,
+    resumePdfPath,
+    coverPdfPath,
   });
 
-  logger.info(`[TAILOR] Saved application package for ${job.company} — ${job.title} (ATS: ${tailoredResume?.atsScore || 'N/A'}) → ${appFolder}`);
+  logger.info(`[TAILOR] Package complete for ${job.company} - ${job.title} (ATS: ${tailoredResume?.atsScore || 'N/A'})`);
 
   return {
     agentId: 'tailor',
@@ -182,14 +459,15 @@ Return ONLY the cover letter text, no JSON wrapper.
     role: job.title,
     atsScore: tailoredResume?.atsScore || 0,
     keywordsInjected: tailoredResume?.keywordsInjected || [],
-    resumePath,
-    coverPath,
+    resumePath: resumePdfPath,
+    coverPath: coverPdfPath,
     folder: appFolder,
-    resumeContent: resumeMd,
+    resumeContent: resumeText,
     coverContent: coverLetter,
   };
 }
 
+// ─── DOCUMENT READERS ─────────────────────────────────────────────────────────
 function getDocuments(jobId) {
   const appsRoot = getApplicationsRoot();
   if (!fs.existsSync(appsRoot)) return { resume: null, cover: null };
@@ -205,8 +483,8 @@ function getDocuments(jobId) {
     if (meta.jobId === jobId) {
       const folderPath = path.join(appsRoot, folder);
       const files = fs.readdirSync(folderPath);
-      const resumeFile = files.find(f => f.includes('_Resume_') && f.endsWith('.doc'));
-      const coverFile = files.find(f => (f.includes('_coverletter_') || f.includes('_Coverletter_')) && f.endsWith('.doc'));
+      const resumeFile = files.find(f => f.includes('_Resume_') && (f.endsWith('.pdf') || f.endsWith('.txt')));
+      const coverFile = files.find(f => f.includes('_CoverLetter_') && (f.endsWith('.pdf') || f.endsWith('.txt')));
       return {
         resume: resumeFile ? fs.readFileSync(path.join(folderPath, resumeFile), 'utf8') : null,
         cover: coverFile ? fs.readFileSync(path.join(folderPath, coverFile), 'utf8') : null,
@@ -232,8 +510,8 @@ function getAllApplications() {
       return {
         ...meta,
         folderName: folder,
-        hasResume: files.some(f => f.includes('_Resume_') && f.endsWith('.doc')),
-        hasCover: files.some(f => (f.includes('_coverletter_') || f.includes('_Coverletter_')) && f.endsWith('.doc')),
+        hasResume: files.some(f => f.includes('_Resume_') && (f.endsWith('.pdf') || f.endsWith('.txt'))),
+        hasCover: files.some(f => f.includes('_CoverLetter_') && (f.endsWith('.pdf') || f.endsWith('.txt'))),
       };
     })
     .filter(Boolean)
@@ -255,4 +533,7 @@ function docExistsForJob(jobId) {
   return false;
 }
 
-module.exports = { runTailor, getDocuments, getAllApplications, docExistsForJob, getApplicationsRoot };
+module.exports = {
+  runTailor, getDocuments, getAllApplications, docExistsForJob,
+  getApplicationsRoot, buildResumePDF, buildCoverPDF,
+};

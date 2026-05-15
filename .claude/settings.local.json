@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -c src/services/tailor.js)",
+      "Bash(node -e ' *)",
+      "Bash(node -c src/services/scout.js)",
+      "Bash(node _scout_extract_test.js)",
+      "Bash(node *)"
+    ]
+  }
+}
