@@ -1,7 +1,7 @@
 {
   "name": "orbitapply",
   "version": "1.0.0",
-  "description": "OrbitApply — AI-powered autonomous job search and application system",
+  ""description": "OrbitApply — AI-powered autonomous job search and application system. Runs entirely on localhost. No cloud. No subscriptions.",",
   "main": "index.js",
   "scripts": {
     "dev": "nodemon index.js",
