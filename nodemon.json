@@ -1,0 +1,21 @@
+{
+  "watch": ["index.js", "src"],
+  "ext": "js,mjs,cjs,json",
+  "ignore": [
+    "Apply/",
+    "workspace-scout/",
+    "workspace-recon/",
+    "workspace-tailor/",
+    "workspace-submit/",
+    "workspace-ledger/",
+    "workspace-coach/",
+    "sessions/",
+    "logs/",
+    "memory/",
+    "credentials/",
+    "ui/",
+    "node_modules/",
+    "*.test.js"
+  ],
+  "delay": "1000"
+}

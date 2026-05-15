@@ -52,9 +52,47 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong. Check server logs.' });
 });
 
-app.listen(PORT, HOST, () => {
+const server = app.listen(PORT, HOST, () => {
   logger.info(`OrbitApply gateway running at http://${HOST}:${PORT}`);
   logger.info(`Control UI: http://localhost:${PORT}`);
+});
+
+// If the port is still held (e.g. a previous process is shutting down),
+// fail with a clear message instead of an unhandled 'error' crash.
+server.on('error', err => {
+  if (err.code === 'EADDRINUSE') {
+    logger.error(
+      `Port ${PORT} is already in use. Another OrbitApply instance is still running — ` +
+      `stop it (Stop-Process -Name node) and retry.`
+    );
+  } else {
+    logger.error(`Server error: ${err.message}`, err);
+  }
+  process.exit(1);
+});
+
+// Graceful shutdown so the port is released before nodemon (or the OS)
+// starts the next instance. Prevents EADDRINUSE on dev restarts.
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info(`Received ${signal} — closing server...`);
+  const forceExit = setTimeout(() => {
+    logger.error('Shutdown timed out — forcing exit.');
+    process.exit(0);
+  }, 8000);
+  forceExit.unref();
+  server.close(() => {
+    clearTimeout(forceExit);
+    logger.info('Server closed cleanly.');
+    process.exit(0);
+  });
+}
+
+// SIGUSR2 is what nodemon sends on restart; SIGINT/SIGTERM cover Ctrl+C and OS kills.
+['SIGINT', 'SIGTERM', 'SIGUSR2'].forEach(sig => {
+  process.once(sig, () => shutdown(sig));
 });
 
 module.exports = app;
