@@ -66,7 +66,8 @@ function checkDailyLimit() {
 }
 
 function checkProtectedContacts(companyDomain, hiringManagerName) {
-  const protected_ = readJSON(PROTECTED_PATH, []);
+  const protectedData = readJSON(PROTECTED_PATH, { contacts: [] });
+  const protected_ = Array.isArray(protectedData) ? protectedData : (protectedData.contacts || []);
   for (const p of protected_) {
     if (companyDomain && p.domain && companyDomain.toLowerCase().includes(p.domain.toLowerCase())) {
       return { blocked: true, reason: `Company domain matches protected contact: ${p.domain}` };
@@ -79,7 +80,8 @@ function checkProtectedContacts(companyDomain, hiringManagerName) {
 }
 
 function checkBlacklist(companyName) {
-  const blacklist = readJSON(BLACKLIST_PATH, []);
+  const blacklistData = readJSON(BLACKLIST_PATH, { companies: [] });
+  const blacklist = Array.isArray(blacklistData) ? blacklistData : (blacklistData.companies || []);
   for (const entry of blacklist) {
     const bl = typeof entry === 'string' ? entry : entry.name || entry.domain || '';
     if (bl && companyName.toLowerCase().includes(bl.toLowerCase())) {
@@ -90,7 +92,8 @@ function checkBlacklist(companyName) {
 }
 
 function filterScoutResults(results) {
-  const blacklist = readJSON(BLACKLIST_PATH, []);
+  const blacklistData = readJSON(BLACKLIST_PATH, { companies: [] });
+  const blacklist = Array.isArray(blacklistData) ? blacklistData : (blacklistData.companies || []);
   return results.filter(job => {
     const check = checkBlacklist(job.company || '');
     if (check.blocked) {
@@ -111,37 +114,37 @@ function checkHumanPauseFields(formFields = []) {
 function runPreflightCheck({ jobId, company, companyDomain, hiringManager, formFields = [], jobUrl = null }) {
   const budget = checkBudget();
   if (budget.hardStop) {
-    logger.warn(`[GUARDIAN] HARD STOP — Daily budget exceeded: $${budget.used.toFixed(2)} / $${budget.limit}`);
+    logger.warn(`[GUARDIAN] HARD STOP - Daily budget exceeded: $${budget.used.toFixed(2)} / $${budget.limit}`);
     return { verdict: 'HARD_STOP', reason: `Daily budget cap reached ($${budget.used.toFixed(2)} of $${budget.limit})`, budgetStatus: budget, todayCount: 0 };
   }
 
   const daily = checkDailyLimit();
   if (daily.hardStop) {
-    logger.warn(`[GUARDIAN] HARD STOP — Daily apply limit reached: ${daily.todayCount}/${daily.maxApplies}`);
+    logger.warn(`[GUARDIAN] HARD STOP - Daily apply limit reached: ${daily.todayCount}/${daily.maxApplies}`);
     return { verdict: 'HARD_STOP', reason: `Daily apply limit reached (${daily.todayCount}/${daily.maxApplies})`, budgetStatus: budget, todayCount: daily.todayCount };
   }
 
   const protectedCheck = checkProtectedContacts(companyDomain, hiringManager);
   if (protectedCheck.blocked) {
-    logger.info(`[GUARDIAN] BLOCK — ${protectedCheck.reason}`);
+    logger.info(`[GUARDIAN] BLOCK - ${protectedCheck.reason}`);
     return { verdict: 'BLOCK', reason: protectedCheck.reason, budgetStatus: budget, todayCount: daily.todayCount };
   }
 
   const blacklistCheck = checkBlacklist(company || '');
   if (blacklistCheck.blocked) {
-    logger.info(`[GUARDIAN] BLOCK — ${blacklistCheck.reason}`);
+    logger.info(`[GUARDIAN] BLOCK - ${blacklistCheck.reason}`);
     return { verdict: 'BLOCK', reason: blacklistCheck.reason, budgetStatus: budget, todayCount: daily.todayCount };
   }
 
   const pauseCheck = checkHumanPauseFields(formFields);
   if (pauseCheck.paused) {
-    logger.info(`[GUARDIAN] PAUSE — Human review required for fields: ${pauseCheck.fields.join(', ')}`);
+    logger.info(`[GUARDIAN] PAUSE - Human review required for fields: ${pauseCheck.fields.join(', ')}`);
     addToHumanQueue({ jobId, company, companyDomain, url: jobUrl, pausedFields: pauseCheck.fields });
     return { verdict: 'PAUSE', reason: 'Human review required', humanPauseFields: pauseCheck.fields, budgetStatus: budget, todayCount: daily.todayCount };
   }
 
   if (budget.alert) {
-    logger.warn(`[GUARDIAN] ALERT — Budget at $${budget.used.toFixed(2)} / $${budget.limit} (${((budget.used / budget.limit) * 100).toFixed(0)}%)`);
+    logger.warn(`[GUARDIAN] ALERT - Budget at $${budget.used.toFixed(2)} / $${budget.limit} (${((budget.used / budget.limit) * 100).toFixed(0)}%)`);
   }
 
   return {
@@ -167,8 +170,8 @@ function enforceRateLimit() {
   const elapsed = Date.now() - new Date(record.lastSubmitAt).getTime();
   if (elapsed < minWaitMs) {
     const waitSec = Math.ceil((minWaitMs - elapsed) / 1000);
-    logger.warn(`[GUARDIAN] RATE LIMIT — ${waitSec}s remaining before next submission`);
-    return { blocked: true, reason: `Rate limit active — please wait ${waitSec}s before submitting again`, waitMs: minWaitMs - elapsed };
+    logger.warn(`[GUARDIAN] RATE LIMIT - ${waitSec}s remaining before next submission`);
+    return { blocked: true, reason: `Rate limit active - please wait ${waitSec}s before submitting again`, waitMs: minWaitMs - elapsed };
   }
   return { blocked: false };
 }
