@@ -218,6 +218,21 @@ function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
   const jobLower = jobTitle.toLowerCase();
   const textLower = fullText.toLowerCase();
 
+  // Read seniority and exclude from profile — user-controlled from UI
+  const seniorityWords = (profile.seniorityKeywords || [
+    'director', 'head', 'vp', 'vice president', 'chief',
+    'senior director', 'principal', 'lead', 'manager',
+  ]).map(w => w.toLowerCase().trim());
+
+  const excludeTitles = (profile.excludeTitles || [
+    'junior', 'entry level', 'intern', 'associate', 'coordinator',
+  ]).map(w => w.toLowerCase().trim());
+
+  // Hard exclude — if title contains any excluded word, score zero
+  if (excludeTitles.some(w => jobLower.includes(w))) {
+    return { titleMatch: 0, locationMatch: 0, salaryMatch: 0, skillsMatch: 0 };
+  }
+
   if (NOISE_PATTERNS.some(p => p.test(jobTitle))) {
     return { titleMatch: 0, locationMatch: 0, salaryMatch: 0, skillsMatch: 0 };
   }
@@ -240,9 +255,14 @@ function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
     if (score > titleMatch) titleMatch = score;
   }
 
-  const seniorityWords = ['director', 'head', 'vp', 'vice president', 'chief', 'senior director', 'principal', 'lead', 'manager'];
+  // Seniority check — uses profile-defined keywords
   const hasSeniority = seniorityWords.some(w => jobLower.includes(w));
-  if (!hasSeniority) titleMatch = Math.min(titleMatch, 20);
+
+  // Goal match bypass — if user searched a specific term and it matches title well, skip seniority cap
+  const goalMatchesTitle = goal && goal.trim().split(/\s+/).filter(w => w.length > 2)
+    .every(w => jobLower.includes(w.toLowerCase()));
+
+  if (!hasSeniority && !goalMatchesTitle) titleMatch = Math.min(titleMatch, 20);
 
   let locationMatch = 0;
   const locLower = (location || '').toLowerCase();
@@ -291,6 +311,9 @@ function extractAndScoreJobs(rawResults, profile, goal = '') {
   const seen = new Set();
   const jobs = [];
 
+  // Use profile-defined min score or fall back to default
+  const minScore = profile.minFitScore ?? MIN_DISPLAY_SCORE;
+
   rawResults.forEach((r) => {
     if (seen.has(r.url)) return;
     seen.add(r.url);
@@ -306,7 +329,7 @@ function extractAndScoreJobs(rawResults, profile, goal = '') {
     const breakdown = scoreFit(jobTitle, location, salary, fullText, profile, goal);
     const fitScore = Object.values(breakdown).reduce((a, b) => a + b, 0);
 
-    if (fitScore < MIN_DISPLAY_SCORE) return;
+    if (fitScore < minScore) return;
 
     if (isExpiredJob(`${r.title} ${snippet}`)) {
       logger.info(`[SCOUT] Skipped expired posting: "${jobTitle}" @ ${company} — ${r.url}`);

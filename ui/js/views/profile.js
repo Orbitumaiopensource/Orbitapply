@@ -11,6 +11,7 @@ async function renderProfile() {
       </div>
     </div>
     <div id="profile-alert"></div>
+
     <div class="card" style="margin-bottom:var(--gap)">
       <div class="section-label">Identity</div>
       <div class="form-row">
@@ -42,11 +43,11 @@ async function renderProfile() {
     <div class="card" style="margin-bottom:var(--gap)">
       <div class="section-label">Target Roles & Preferences</div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Target Roles (comma-separated)</label><input id="p-roles" class="form-input" placeholder="AI Product Manager, AI Engineer, Solutions Architect" /></div>
-        <div class="form-group"><label class="form-label">Target Locations (comma-separated)</label><input id="p-locations" class="form-input" placeholder="New York, Remote, San Francisco" /></div>
+        <div class="form-group"><label class="form-label">Target Roles (comma-separated)</label><input id="p-roles" class="form-input" placeholder="AI Transformation Consultant, Director of AI, Head of AI" /></div>
+        <div class="form-group"><label class="form-label">Target Locations (comma-separated)</label><input id="p-locations" class="form-input" placeholder="Remote, Dallas TX, McKinney TX" /></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Target Industries (comma-separated)</label><input id="p-industries" class="form-input" placeholder="AI/ML, SaaS, FinTech" /></div>
+        <div class="form-group"><label class="form-label">Target Industries (comma-separated)</label><input id="p-industries" class="form-input" placeholder="SaaS, Enterprise Software, Fintech" /></div>
         <div class="form-group"><label class="form-label">Remote Preference</label>
           <select id="p-remote" class="form-input">
             <option value="remote">Remote Only</option>
@@ -63,6 +64,39 @@ async function renderProfile() {
           <select id="p-notice" class="form-input">
             <option>Immediate</option><option>2 weeks</option><option>30 days</option><option>60 days</option>
           </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:var(--gap)">
+      <div class="section-label">Job Search Quality Controls</div>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:var(--gap)">
+        These settings control how SCOUT scores and filters job results. Tune them to match your career level and goals.
+      </p>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Seniority Keywords (comma-separated)</label>
+          <input id="p-seniority" class="form-input" placeholder="director, head, vp, consultant, specialist, architect, lead, manager" />
+          <span style="font-size:0.78rem;color:var(--text-muted)">Jobs matching ANY of these words get full title score. Add your target level words here.</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Exclude These Title Keywords (comma-separated)</label>
+          <input id="p-exclude-titles" class="form-input" placeholder="junior, entry level, intern, associate, coordinator" />
+          <span style="font-size:0.78rem;color:var(--text-muted)">Jobs containing ANY of these words are filtered out automatically.</span>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Minimum Fit Score to Show (0-100)</label>
+          <input id="p-minscore" class="form-input" type="number" min="0" max="100" placeholder="50" />
+          <span style="font-size:0.78rem;color:var(--text-muted)">Jobs scoring below this are hidden. Lower = more results, Higher = better quality.</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Minimum Score to Auto-Qualify for TAILOR (0-100)</label>
+          <input id="p-qualifyscore" class="form-input" type="number" min="0" max="100" placeholder="70" />
+          <span style="font-size:0.78rem;color:var(--text-muted)">Jobs scoring above this are passed to RECON and TAILOR automatically.</span>
         </div>
       </div>
     </div>
@@ -115,6 +149,10 @@ async function loadProfileData() {
     if (el('p-resume')) el('p-resume').value = profile.resume?.summary || '';
     if (el('p-orbit')) el('p-orbit').value = profile.orbitPositioningStatement || '';
     if (el('p-tone')) el('p-tone').value = profile.coverLetterTone || 'orbit-framework';
+    if (el('p-seniority')) el('p-seniority').value = (profile.seniorityKeywords || ['director','head','vp','vice president','chief','principal','lead','manager','consultant','specialist','architect','strategist','advisor','executive']).join(', ');
+    if (el('p-exclude-titles')) el('p-exclude-titles').value = (profile.excludeTitles || ['junior','entry level','intern','associate','coordinator']).join(', ');
+    if (el('p-minscore')) el('p-minscore').value = profile.minFitScore ?? 50;
+    if (el('p-qualifyscore')) el('p-qualifyscore').value = profile.minQualifyScore ?? 70;
   } catch (err) {
     showAlert('profile-alert', err.message, 'error');
   }
@@ -143,9 +181,13 @@ async function saveProfile() {
     noticePeriod: el('p-notice')?.value,
     skills: csvToArr(el('p-skills')?.value || ''),
     yearsExperience: parseInt(el('p-exp')?.value || '0', 10),
-    resume: { summary: el('p-resume')?.value.trim(), path: '' },
+    resume: { summary: el('p-resume')?.value.trim(), path: 'memory/resume.md' },
     orbitPositioningStatement: el('p-orbit')?.value.trim(),
     coverLetterTone: el('p-tone')?.value,
+    seniorityKeywords: csvToArr(el('p-seniority')?.value || ''),
+    excludeTitles: csvToArr(el('p-exclude-titles')?.value || ''),
+    minFitScore: parseInt(el('p-minscore')?.value || '50', 10),
+    minQualifyScore: parseInt(el('p-qualifyscore')?.value || '70', 10),
   };
 
   try {

@@ -25,7 +25,12 @@ const STRING_MAX = {
 };
 
 const ARRAY_STRING_MAX = {
-  targetRoles: 120, targetLocations: 120, targetIndustries: 120, skills: 100,
+  targetRoles: 120,
+  targetLocations: 120,
+  targetIndustries: 120,
+  skills: 100,
+  seniorityKeywords: 60,
+  excludeTitles: 60,
 };
 
 function sanitiseProfileField(key, value) {
@@ -37,10 +42,11 @@ function sanitiseProfileField(key, value) {
     if (!Array.isArray(value)) return null;
     return value
       .filter(v => typeof v === 'string')
-      .map(v => v.slice(0, ARRAY_STRING_MAX[key]))
+      .map(v => v.slice(0, ARRAY_STRING_MAX[key]).toLowerCase().trim())
+      .filter(Boolean)
       .slice(0, 50);
   }
-  if (key === 'salaryMin' || key === 'salaryMax' || key === 'yearsExperience') {
+  if (['salaryMin', 'salaryMax', 'yearsExperience', 'minFitScore', 'minQualifyScore'].includes(key)) {
     const n = Number(value);
     return Number.isFinite(n) && n >= 0 ? n : null;
   }
@@ -59,11 +65,15 @@ router.put('/', (req, res) => {
     const current = readJSON(PROFILE_PATH, {});
     const body = req.body;
 
-    const ALLOWED_FIELDS = ['name','title','email','phone','linkedinUrl','website',
-      'location','city','state','country','workAuthorization',
-      'targetRoles','targetLocations','targetIndustries','companySize','remotePreference',
-      'salaryMin','salaryMax','equityAcceptable','noticePeriod','skills','yearsExperience',
-      'resume','coverLetterTone','orbitPositioningStatement'];
+    const ALLOWED_FIELDS = [
+      'name', 'title', 'email', 'phone', 'linkedinUrl', 'website',
+      'location', 'city', 'state', 'country', 'workAuthorization',
+      'targetRoles', 'targetLocations', 'targetIndustries', 'companySize', 'remotePreference',
+      'salaryMin', 'salaryMax', 'equityAcceptable', 'noticePeriod', 'skills', 'yearsExperience',
+      'resume', 'coverLetterTone', 'orbitPositioningStatement',
+      // Search quality controls
+      'seniorityKeywords', 'excludeTitles', 'minFitScore', 'minQualifyScore',
+    ];
 
     const updated = { ...current };
     for (const field of ALLOWED_FIELDS) {
@@ -105,10 +115,11 @@ router.post('/blacklist', (req, res) => {
   try {
     const { name, domain } = req.body;
     if (!name && !domain) return res.status(400).json({ error: 'name or domain required.' });
-    const list = readJSON(BLACKLIST_PATH, []);
+    const blacklistData = readJSON(BLACKLIST_PATH, { companies: [] });
+    const list = Array.isArray(blacklistData) ? blacklistData : (blacklistData.companies || []);
     list.push({ name: name || '', domain: domain || '', addedAt: new Date().toISOString() });
-    writeJSON(BLACKLIST_PATH, list);
-    res.json(list);
+    writeJSON(BLACKLIST_PATH, { companies: list });
+    res.json({ companies: list });
   } catch (err) { res.status(500).json({ error: 'Failed to add to blacklist.' }); }
 });
 
