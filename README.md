@@ -62,7 +62,7 @@ Everything runs at `http://localhost:3000`. Your data never leaves your machine.
 ## How the Pipeline Works
 
 ### SCOUT — Job Discovery (No AI cost)
-Runs 15 parallel searches across 40+ job sites using a waterfall of 7 search providers (Tavily → Brave → SerpAPI → Bing → Google → Jina → DuckDuckGo). Scores every result locally in pure JavaScript — zero AI cost at this stage.
+Runs 15 parallel searches across 40+ job sites using a waterfall of 7 search providers (Tavily → Brave → SerpAPI → Bing → Google → Jina → DuckDuckGo). Scores every result locally in pure JavaScript — zero AI cost at this stage. Resolves the employer name from title patterns, snippet text, and company-owned career hosts, and filters out aggregator search/browse pages — no AI required.
 
 **Fit scoring (0–100):**
 | Factor | Points |
@@ -78,9 +78,11 @@ For each qualified job, RECON builds a structured intelligence profile: culture 
 ### TAILOR — Document Generation (Claude Sonnet)
 For every job scoring 60+, TAILOR runs two sequential Claude Sonnet calls:
 
-**Resume tailoring** — rewrites bullet points to mirror JD language, injects ATS keywords, applies ORBIT Framework positioning in the summary. Runs an internal ATS simulation targeting 75+/100.
+**Resume tailoring** — rewrites bullet points to mirror JD language, injects ATS keywords, applies ORBIT Framework positioning in the summary, and is **industry-aware** (infers the target industry from the job and your `targetIndustries`). Runs an internal ATS simulation targeting 75+/100.
 
 **Cover letter writing** — strict ORBIT structure (Outcome → Revenue Lever → Bottleneck → Implement → Track). 250–320 words. Executive tone. No filler phrases. Ever.
+
+**PDF output** — both documents are rendered as polished A4 **PDFs** (header band, section rules, two-column competencies, smart page breaks, page numbers) and saved to `Apply/applications/<Company> - <Title>/`. Falls back to `.txt` if PDF generation fails.
 
 ### GUARDIAN — Safety Layer (No AI)
 Runs before every TAILOR and SUBMIT action. Enforces daily budget cap ($5), apply limits (15/day), blacklist, protected contacts, and human review queue for sensitive form fields.
@@ -89,7 +91,9 @@ Runs before every TAILOR and SUBMIT action. Enforces daily budget cap ($5), appl
 Registers every application with full metadata, status tracking, follow-up reminders, and budget accounting.
 
 ### COACH — Interview Prep (Claude Sonnet)
-Auto-triggers when you update an application to Phone Screen or Interview stage. Generates a full prep pack: 10 behavioral questions with STAR templates, 5–10 technical questions, salary negotiation script anchored 15–20% above market, and 3 recent news items to reference naturally.
+Auto-triggers when you update an application to Phone Screen or Interview stage — **or run it on demand** from the Pipeline application modal (**Generate / Refresh** and **View Prep Pack** buttons). Generates a full prep pack: 10 behavioral questions with STAR templates, salary negotiation script anchored 15–20% above market, and recent news items to reference naturally.
+
+The technical/domain section is grounded in a built-in **GenAI interview question bank** (`src/data/genaiInterviewBank.js`) — 32 vetted questions across 9 categories (LLM fundamentals, RAG, agents, fine-tuning, prompt/context engineering, evaluation, governance, production/cost, AI strategy & leadership), automatically weighted to the role's seniority and grounded in your ORBIT profile.
 
 ---
 
@@ -120,7 +124,7 @@ This is what separates OrbitApply documents from every other AI resume tool. Not
 | **GUARDIAN** | No AI (pure JS) | Safety: budget, rate limits, blacklist, human queue |
 | **SUBMIT** | Claude Haiku | Playwright form fill (optional — off by default, requires `npx playwright install chromium`) |
 | **LEDGER** | No AI (pure JS) | Pipeline tracker |
-| **COACH** | Claude Sonnet | Interview prep — auto-triggered on stage change |
+| **COACH** | Claude Sonnet | Interview prep — auto-triggered on stage change or on demand; grounded in a GenAI question bank |
 
 ---
 
@@ -206,9 +210,9 @@ Open [http://localhost:3000](http://localhost:3000)
 1. Open `http://localhost:3000`
 2. Type your target role and click **Start Job Search Run**
 3. Watch live: SCOUT → RECON → TAILOR → LEDGER
-4. Review tailored documents in `Apply/applications/`
+4. Review tailored resume + cover letter **PDFs** in `Apply/applications/`
 5. Update application status in the Pipeline board as responses arrive
-6. When you reach Phone Screen or Interview — COACH auto-generates your full prep pack
+6. Click any Pipeline card → **INTERVIEW PREP · COACH** → **Generate / Refresh** for a full prep pack (also auto-generated when you reach Phone Screen or Interview)
 
 ---
 
@@ -243,6 +247,7 @@ OrbitApply/
 ├── agents/              # Agent SOUL.md files — identity and rules per agent
 ├── src/
 │   ├── config/          # jobSites.js — add new job sources here
+│   ├── data/            # genaiInterviewBank.js — COACH question bank
 │   ├── routes/          # Express API routes
 │   ├── services/        # Agent service modules
 │   └── utils/           # Logger, fileStore, searchProvider
@@ -293,7 +298,7 @@ Full troubleshooting guide → [SETUP.md](SETUP.md)
 
 ## Roadmap
 
-- [ ] PDF export for tailored resumes
+- [x] PDF export for tailored resumes ✅ *(shipped in v1.2.0)*
 - [ ] Email outreach agent (follow-up automation)
 - [ ] LinkedIn integration for direct apply
 - [ ] Multi-language README

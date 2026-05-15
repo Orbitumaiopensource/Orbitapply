@@ -4,6 +4,20 @@ All notable changes to OrbitApply are documented here.
 
 ---
 
+## [1.2.0] — 2026-05-15
+
+### Added
+- **PDF generation** — TAILOR now produces polished A4 PDF resumes and cover letters (`pdfkit`) with a structured layout: header band, section rules, two-column competencies, smart page breaks, and page numbers. Falls back to `.txt` if PDF generation fails. Output lands in `Apply/applications/<Company> - <Title>/`.
+- **GenAI interview question bank** — `src/data/genaiInterviewBank.js`, an original 32-question bank across 9 categories (LLM fundamentals, RAG, agents, fine-tuning, prompt/context engineering, evaluation, governance, production/cost, AI strategy & leadership), tagged by level and role. Owned content — no third-party material.
+- **COACH on-demand** — `POST /api/v1/documents/:id/prep` plus "Generate / Refresh" and "View Prep Pack" buttons in the Pipeline application modal. COACH no longer requires moving an application to an interview stage to run, and its output is now visible in the UI.
+
+### Improved
+- `src/services/scout.js` — company-extraction overhaul. Now resolves employers from `@Company`, `Company hiring …`, `… at Company`, and trailing `- Company` title patterns, from job-snippet text (`brand.ai is hiring`, `<Name> is the #1 …`), and from company-owned career hosts (`jobs.<co>.com`). Aggregators/job boards (ZipRecruiter, Remotive, Virtual Vocations, iCIMS, etc.) and locations are rejected rather than mis-labeled. ZipRecruiter browse/search pages are no longer ingested as jobs.
+- `src/services/tailor.js` — resume prompt is now industry-aware (infers target industry from the job + `profile.targetIndustries`), carries education/certifications through explicitly, and no longer truncates the base resume mid-section.
+- `src/services/coach.js` — the technical/domain section is now grounded in the vetted question bank, role-weighted by seniority, instead of model-improvised questions.
+
+---
+
 ## [1.1.0] — 2026-05-15
 
 ### Added

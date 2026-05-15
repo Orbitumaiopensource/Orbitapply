@@ -3,6 +3,7 @@ const fs = require('fs');
 const { runAgent } = require('./agentBase');
 const { readJSON } = require('../utils/fileStore');
 const { logger } = require('../utils/logger');
+const { selectQuestions } = require('../data/genaiInterviewBank');
 
 const WORKSPACE = path.join(__dirname, '..', '..', 'workspace-coach');
 
@@ -11,6 +12,17 @@ async function runCoach(application, sessionId = null) {
   const intel = reconPath && fs.existsSync(reconPath) ? readJSON(reconPath, {}) : {};
   const profilePath = path.join(__dirname, '..', '..', 'memory', 'profile.json');
   const profile = readJSON(profilePath, {});
+
+  // Ground the technical section in a vetted, role-appropriate question bank
+  // instead of letting the model improvise questions.
+  const curated = selectQuestions(
+    { title: application.title, company: application.company, snippet: application.snippet || '' },
+    profile,
+    { count: 12 }
+  );
+  const curatedBlock = curated.map((q, i) =>
+    `${i + 1}. [${q.category} · ${q.level}] ${q.question}\n   Must cover: ${q.keyPoints.join('; ')}`
+  ).join('\n');
 
   const prompt = `
 INTERVIEW PREP REQUEST
@@ -28,11 +40,18 @@ CANDIDATE:
 - ORBIT Statement: ${profile.orbitPositioningStatement || ''}
 - Salary Target: $${profile.salaryMin || 0}k - $${profile.salaryMax || 0}k
 
+CURATED TECHNICAL/DOMAIN QUESTION BANK (vetted — use THESE for section 4, do not invent your own):
+${curatedBlock}
+
 Generate a comprehensive interview prep pack in Markdown format with these sections:
 1. ## Company Overview (from intel data)
 2. ## What They're Really Looking For (role analysis)
 3. ## Top 10 Behavioral Questions (with STAR answer templates)
-4. ## Technical / Domain Questions (5-10 questions)
+4. ## Technical / Domain Questions
+   - Use the CURATED QUESTION BANK above. For EACH question, provide: the question
+     verbatim, a model answer tailored to THIS candidate's real experience and the
+     ORBIT Framework, and the "must cover" points worked in naturally.
+   - Do not add invented questions; only expand the curated ones.
 5. ## Salary Negotiation Script (anchored to salary benchmark)
 6. ## Questions to Ask the Interviewer (5 strategic questions)
 7. ## Recent News to Reference (from company intel)

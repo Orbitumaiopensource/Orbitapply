@@ -178,6 +178,12 @@ async function openAppDetail(id) {
           <textarea id="modal-notes" class="form-input form-textarea" rows="3">${app.notes || ''}</textarea>
           <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="saveNotes('${app.id}')">Save Notes</button>
         </div>
+        <div style="margin-bottom:16px">
+          <div class="form-label" style="margin-bottom:8px">Interview Prep · COACH</div>
+          <button class="btn btn-secondary btn-sm" onclick="loadPrep('${app.id}')">View Prep Pack</button>
+          <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick="generatePrep('${app.id}')">Generate / Refresh</button>
+          <div id="modal-prep" style="margin-top:12px;font-size:12.5px;line-height:1.55;color:var(--text-2);max-height:320px;overflow-y:auto"></div>
+        </div>
         <div style="font-size:12px;color:var(--text-muted)">
           Added to pipeline: ${new Date(app.appliedAt).toLocaleDateString()} · Follow-up due: ${app.followUpDue ? new Date(app.followUpDue).toLocaleDateString() : '—'}
           ${app.url ? `<br><a href="${app.url}" target="_blank" style="color:var(--accent-dark);font-weight:600">View Job Posting ↗</a>` : ''}
@@ -307,6 +313,12 @@ async function openAppDetail(id) {
           <div class="form-label" style="margin-bottom:8px">Notes</div>
           <textarea id="modal-notes" class="form-input form-textarea" rows="3">${app.notes || ''}</textarea>
           <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="saveNotes('${app.id}')">Save Notes</button>
+        </div>
+        <div style="margin-bottom:16px">
+          <div class="form-label" style="margin-bottom:8px">Interview Prep · COACH</div>
+          <button class="btn btn-secondary btn-sm" onclick="loadPrep('${app.id}')">View Prep Pack</button>
+          <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick="generatePrep('${app.id}')">Generate / Refresh</button>
+          <div id="modal-prep" style="margin-top:12px;font-size:12.5px;line-height:1.55;color:var(--text-2);max-height:320px;overflow-y:auto"></div>
         </div>
         <div style="font-size:12px;color:var(--text-muted)">
           Added to pipeline: ${new Date(app.appliedAt).toLocaleDateString()} · Follow-up due: ${app.followUpDue ? new Date(app.followUpDue).toLocaleDateString() : '—'}

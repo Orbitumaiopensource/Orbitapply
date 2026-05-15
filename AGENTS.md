@@ -25,7 +25,7 @@ User clicks Run
       │
    LEDGER (pipeline tracker — no AI)
       │
-   COACH (interview prep — Sonnet, triggered on stage change)
+   COACH (interview prep — Sonnet, triggered on stage change or on demand)
 ```
 
 ## Agent Files
@@ -39,7 +39,7 @@ User clicks Run
 | GUARDIAN | `agents/guardian/SOUL.md` | `src/services/guardian.js` | — |
 | SUBMIT | `agents/submit/SOUL.md` | `src/services/submit.js` | `src/routes/submit.js` |
 | LEDGER | `agents/ledger/SOUL.md` | `src/services/ledger.js` | `src/routes/pipeline.js` |
-| COACH | `agents/coach/SOUL.md` | `src/services/coach.js` | — |
+| COACH | `agents/coach/SOUL.md` | `src/services/coach.js` | `src/routes/documents.js` (`/prep`) |
 
 ## Key Rules for AI Assistants
 
@@ -49,6 +49,8 @@ User clicks Run
 - Always read the relevant `SOUL.md` before modifying an agent service
 - Job sites are configured in `src/config/jobSites.js` — not hardcoded in scout.js
 - Search providers are in `src/utils/searchProvider.js` — waterfall fallback order matters
+- COACH's interview questions live in `src/data/genaiInterviewBank.js` — original content only, never paste third-party question lists
+- TAILOR renders PDFs via `pdfkit`; keep the `.txt` fallback path intact
 
 ## ORBIT Framework
 
