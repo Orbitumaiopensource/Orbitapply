@@ -1,10 +1,10 @@
 const path = require('path');
 const fs = require('fs');
-const axios = require('axios');
 const { readJSON, writeJSON } = require('../utils/fileStore');
 const { filterScoutResults } = require('./guardian');
 const { logger } = require('../utils/logger');
 const { SEARCH_DOMAINS, getPlatformFromUrl } = require('../config/jobSites');
+const { waterfallSearch, waterfallExtract } = require('../utils/searchProvider');
 
 const PROFILE_PATH = path.join(__dirname, '..', '..', 'memory', 'profile.json');
 const DEFAULT_WORKSPACE = path.join(__dirname, '..', '..', 'workspace-scout');
@@ -82,42 +82,6 @@ function isJobDetailUrl(url) {
   return true;
 }
 
-async function searchWithTavily(query, depth = 'basic') {
-  try {
-    const response = await axios.post(
-      'https://api.tavily.com/search',
-      {
-        api_key: process.env.TAVILY_API_KEY,
-        query,
-        search_depth: depth,
-        max_results: MAX_RESULTS_PER_QUERY,
-        include_domains: SEARCH_DOMAINS,
-        include_answer: false,
-      },
-      { timeout: 15000 }
-    );
-    const results = response.data?.results || [];
-    return results.filter(r => isJobDetailUrl(r.url));
-  } catch (err) {
-    logger.error(`[SCOUT] Tavily search failed for "${query}": ${err.message}`);
-    return [];
-  }
-}
-
-async function extractUrlWithTavily(url) {
-  try {
-    const response = await axios.post(
-      'https://api.tavily.com/extract',
-      { api_key: process.env.TAVILY_API_KEY, urls: [url] },
-      { timeout: 15000 }
-    );
-    return response.data?.results?.[0] || null;
-  } catch (err) {
-    logger.warn(`[SCOUT] Tavily extract failed for "${url}": ${err.message}`);
-    return null;
-  }
-}
-
 function buildSearchQueries(profile, goal = '') {
   const items = [];
   const atsStr = 'site:lever.co OR site:greenhouse.io OR site:jobs.ashbyhq.com OR site:myworkdayjobs.com';
@@ -159,7 +123,7 @@ function capitalise(str) {
   return (str || '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
 }
 
-// getPlatform now powered by jobSites.js config
+// getPlatform powered by jobSites.js config
 const getPlatform = getPlatformFromUrl;
 
 function extractCompany(url, title) {
@@ -327,7 +291,7 @@ function extractAndScoreJobs(rawResults, profile, goal = '') {
   const seen = new Set();
   const jobs = [];
 
-  rawResults.forEach((r, i) => {
+  rawResults.forEach((r) => {
     if (seen.has(r.url)) return;
     seen.add(r.url);
 
@@ -360,6 +324,7 @@ function extractAndScoreJobs(rawResults, profile, goal = '') {
       fitScore,
       fitBreakdown: breakdown,
       snippet,
+      searchProvider: r._provider || 'unknown',
       postedAt: 'recent',
       approved: false,
       rejected: false,
@@ -376,31 +341,23 @@ async function runScout(goal = '') {
     return { error: 'No target roles found in profile. Please complete your profile setup first.' };
   }
 
-  if (!process.env.TAVILY_API_KEY) {
-    return { error: 'TAVILY_API_KEY is not set in .env. Add it to run job searches.' };
-  }
-
   const queries = buildSearchQueries(profile, goal);
   const rawResults = [];
 
-  logger.info(`[SCOUT] Running ${queries.length} Tavily searches in parallel`);
+  logger.info(`[SCOUT] Running ${queries.length} searches in parallel (waterfall provider)`);
   const searchBatches = await Promise.allSettled(queries.map(({ query, depth }) => {
     logger.info(`[SCOUT] Searching [${depth}]: "${query}"`);
-    return searchWithTavily(query, depth);
+    return waterfallSearch(query, depth, SEARCH_DOMAINS);
   }));
 
   for (const batch of searchBatches) {
     if (batch.status !== 'fulfilled') continue;
     for (const r of batch.value) {
-      rawResults.push({
-        title: r.title || '',
-        url: r.url || '',
-        snippet: (r.content || r.snippet || '').slice(0, 400),
-      });
+      if (isJobDetailUrl(r.url)) rawResults.push(r);
     }
   }
 
-  logger.info(`[SCOUT] ${rawResults.length} raw results from Tavily — scoring locally`);
+  logger.info(`[SCOUT] ${rawResults.length} raw results — scoring locally`);
 
   const scored = filterScoutResults(extractAndScoreJobs(rawResults, profile, goal));
 
@@ -439,12 +396,10 @@ async function importJob({ url, title = '', company = '', salary = '' }) {
   let snippet = '';
   let resolvedTitle = title.trim();
 
-  if (process.env.TAVILY_API_KEY) {
-    const extracted = await extractUrlWithTavily(url);
-    if (extracted) {
-      snippet = (extracted.raw_content || '').slice(0, 400);
-      if (!resolvedTitle) resolvedTitle = (extracted.title || '').slice(0, 120).trim();
-    }
+  const extracted = await waterfallExtract(url);
+  if (extracted) {
+    snippet = (extracted.content || '').slice(0, 400);
+    if (!resolvedTitle) resolvedTitle = (extracted.title || '').slice(0, 120).trim();
   }
 
   const resolvedCompany = company.trim() || extractCompany(url, resolvedTitle);
@@ -477,7 +432,6 @@ async function importJob({ url, title = '', company = '', salary = '' }) {
   }
 
   if (isExpiredJob(`${jobTitle} ${snippet}`)) {
-    logger.info(`[SCOUT] Rejected manual import — expired posting: "${jobTitle}" @ ${resolvedCompany} — ${url}`);
     return { error: 'This job posting is no longer accepting applications and cannot be imported.' };
   }
 
@@ -564,7 +518,7 @@ function purgeExpiredJobs(date) {
 }
 
 function buildCSV(jobs) {
-  const headers = ['#', 'Title', 'Company', 'Location', 'Salary', 'Fit Score', 'Platform', 'Status', 'URL'];
+  const headers = ['#', 'Title', 'Company', 'Location', 'Salary', 'Fit Score', 'Platform', 'Provider', 'Status', 'URL'];
   const rows = jobs.map((j, i) => {
     const status = j.approved ? 'Approved' : j.rejected ? 'Rejected' : 'Pending';
     return [
@@ -575,6 +529,7 @@ function buildCSV(jobs) {
       `"${(j.salary || 'Unspecified').replace(/"/g, '""')}"`,
       j.fitScore || 0,
       j.platform || 'direct',
+      j.searchProvider || 'unknown',
       status,
       `"${(j.url || '').replace(/"/g, '""')}"`,
     ].join(',');
