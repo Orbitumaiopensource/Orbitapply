@@ -20,6 +20,12 @@
       }
     }
   },
+  "scout": {
+    "minDisplayScore": 50,
+    "minQualifiedScore": 70,
+    "maxQueries": 15,
+    "maxResultsPerQuery": 15
+  },
   "budget": {
     "dailyLimitUSD": 5,
     "hardStop": true,
