@@ -12,6 +12,10 @@
 [![ORBIT Framework](https://img.shields.io/badge/Powered_by-ORBIT_Framework-orange?style=flat)](https://orbitumai.com)
 [![Discord](https://img.shields.io/badge/Discord-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/ZamMu766Q)
 
+![OrbitApply Hero Banner](docs/hero-banner.svg)
+
+[![Join Discord](https://img.shields.io/badge/Join_the_community-Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/ZamMu766Q)
+
 </div>
 
 ---
