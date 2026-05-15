@@ -10,6 +10,7 @@
 [![Tavily](https://img.shields.io/badge/Tavily-FF6B35?style=flat&logoColor=white)](https://tavily.com)
 [![License](https://img.shields.io/badge/License-OrbitumAI_Free-blue.svg)](LICENSE)
 [![ORBIT Framework](https://img.shields.io/badge/Powered_by-ORBIT_Framework-orange?style=flat)](https://orbitumai.com)
+[![Discord](https://img.shields.io/badge/Discord-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/ZamMu766Q)
 
 </div>
 
@@ -301,6 +302,8 @@ Full troubleshooting guide → [SETUP.md](SETUP.md)
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) — PRs welcome. The easiest contribution is adding a new job site to `src/config/jobSites.js`.
 
+Join the community on [Discord](https://discord.gg/ZamMu766Q) — get help, share wins, and discuss features.
+
 ---
 
 ## Built With
@@ -323,6 +326,7 @@ OrbitApply was built and shipped without writing a single line of traditional co
 
 [![Website](https://img.shields.io/badge/orbitumai.com-000?style=flat&logo=safari&logoColor=white)](https://orbitumai.com)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/shuv)
+[![Discord](https://img.shields.io/badge/Discord-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/ZamMu766Q)
 
 ---
 
