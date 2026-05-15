@@ -4,6 +4,7 @@ const axios = require('axios');
 const { readJSON, writeJSON } = require('../utils/fileStore');
 const { filterScoutResults } = require('./guardian');
 const { logger } = require('../utils/logger');
+const { SEARCH_DOMAINS, getPlatformFromUrl } = require('../config/jobSites');
 
 const PROFILE_PATH = path.join(__dirname, '..', '..', 'memory', 'profile.json');
 const DEFAULT_WORKSPACE = path.join(__dirname, '..', '..', 'workspace-scout');
@@ -13,14 +14,12 @@ const MIN_DISPLAY_SCORE = 40;
 const MAX_RESULTS_PER_QUERY = 15;
 
 const EXPIRED_JOB_PHRASES = [
-  // Generic application-closed language
   'no longer accepting applications',
   'not accepting applications',
   'no longer accepting new applications',
   'applications are closed',
   'closed to new applicants',
   'application deadline has passed',
-  // Generic posting removed/filled language
   'this job is no longer available',
   'job is no longer available',
   'posting is no longer available',
@@ -32,28 +31,20 @@ const EXPIRED_JOB_PHRASES = [
   'job is closed',
   'listing has expired',
   'role has been filled',
-  // Workday ATS — job removed page
   'the page you are looking for doesn\'t exist',
   'this job requisition is no longer available',
   'job requisition is closed',
-  // Greenhouse ATS — job removed
   'this job listing has been removed',
   'this position is no longer available',
   'this role is no longer available',
-  // Lever ATS — job removed
   'this opening is no longer active',
-  // Ashby ATS — job removed
   'this job is no longer accepting applications',
-  // Smartrecruiters — job removed
   'job is no longer active',
   'this position is closed',
-  // Jobvite — job removed
   'this job is no longer open',
-  // Indeed / LinkedIn — archived/expired
   'this job has been archived',
   'job is expired',
   'this job ad has been removed',
-  // Generic 404-style phrases from ATS platforms
   'page you are looking for does not exist',
   'page does not exist',
   'job not found',
@@ -73,22 +64,7 @@ function getScoutWorkspace() {
   return DEFAULT_WORKSPACE;
 }
 
-// ─── Tavily ────────────────────────────────────────────────────────────────
-
-// All useful job sources — ATS platforms + specific job pages from aggregators
-const SEARCH_DOMAINS = [
-  // Direct ATS (always return single job pages)
-  'lever.co', 'greenhouse.io', 'jobs.ashbyhq.com',
-  'myworkdayjobs.com', 'smartrecruiters.com', 'jobvite.com',
-  'workable.com', 'breezy.hr', 'apply.workable.com',
-  // ADP — large enterprise ATS used by many Fortune 500 companies
-  'myjobs.adp.com',
-  // Aggregators — included but filtered post-fetch to keep only specific job detail URLs
-  'indeed.com', 'glassdoor.com', 'linkedin.com',
-];
-
 // URL patterns that identify aggregator SEARCH RESULT pages (not individual jobs)
-// Any result matching these is discarded — we only want specific job detail pages
 const AGGREGATOR_SEARCH_URL_PATTERNS = [
   /indeed\.com\/jobs\?/i,
   /indeed\.com\/jobs\//i,
@@ -102,11 +78,9 @@ const AGGREGATOR_SEARCH_URL_PATTERNS = [
 
 function isJobDetailUrl(url) {
   if (!url) return false;
-  // Reject aggregator search pages
   if (AGGREGATOR_SEARCH_URL_PATTERNS.some(p => p.test(url))) return false;
   return true;
 }
-
 
 async function searchWithTavily(query, depth = 'basic') {
   try {
@@ -122,7 +96,6 @@ async function searchWithTavily(query, depth = 'basic') {
       },
       { timeout: 15000 }
     );
-    // Post-filter: drop aggregator search pages, keep only specific job detail URLs
     const results = response.data?.results || [];
     return results.filter(r => isJobDetailUrl(r.url));
   } catch (err) {
@@ -145,9 +118,6 @@ async function extractUrlWithTavily(url) {
   }
 }
 
-// Returns [{query, depth}] — 'advanced' for high-signal targeted queries,
-// 'basic' for broader/supplemental queries to keep Tavily spend reasonable.
-// goal: user-provided search term (e.g. "sales director"); drives primary queries.
 function buildSearchQueries(profile, goal = '') {
   const items = [];
   const atsStr = 'site:lever.co OR site:greenhouse.io OR site:jobs.ashbyhq.com OR site:myworkdayjobs.com';
@@ -156,8 +126,6 @@ function buildSearchQueries(profile, goal = '') {
   const goalTerm = (goal || '').trim();
   const profileRoles = (profile.targetRoles || []);
 
-  // Collect unique role terms — goal first (highest priority), then profile roles.
-  // The goal drives the search; profile roles supplement coverage.
   const roleTerms = [];
   if (goalTerm) roleTerms.push(goalTerm);
   for (const role of profileRoles) {
@@ -167,8 +135,6 @@ function buildSearchQueries(profile, goal = '') {
     }
   }
 
-  // Generate ATS + ADP/LinkedIn queries for each role term.
-  // Goal gets 'advanced' depth; supplemental profile roles get 'basic' depth.
   for (let i = 0; i < roleTerms.length && items.length < 12; i++) {
     const term = roleTerms[i];
     const isGoal = i === 0 && Boolean(goalTerm);
@@ -176,12 +142,10 @@ function buildSearchQueries(profile, goal = '') {
     items.push({ query: `"${term}" remote job ${atsStr}`, depth });
     items.push({ query: `"${term}" apply now ${adpStr}`, depth: 'basic' });
     if (isGoal) {
-      // Extra advanced query to maximise ATS coverage for the goal term
       items.push({ query: `"${term}" hiring remote ${atsStr}`, depth: 'advanced' });
     }
   }
 
-  // Fill any remaining slots with a broader sweep for the primary term
   const primaryTerm = goalTerm || profileRoles[0] || '';
   if (primaryTerm && items.length < 15) {
     items.push({ query: `"${primaryTerm}" job opening ${atsStr}`, depth: 'basic' });
@@ -191,26 +155,12 @@ function buildSearchQueries(profile, goal = '') {
   return items.slice(0, 15);
 }
 
-// ─── Extraction helpers ────────────────────────────────────────────────────
-
 function capitalise(str) {
   return (str || '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
 }
 
-function getPlatform(url) {
-  if (url.includes('linkedin.com')) return 'linkedin';
-  if (url.includes('indeed.com')) return 'indeed';
-  if (url.includes('glassdoor.com')) return 'glassdoor';
-  if (url.includes('lever.co')) return 'lever';
-  if (url.includes('greenhouse.io')) return 'greenhouse';
-  if (url.includes('ashbyhq.com')) return 'ashby';
-  if (url.includes('myworkdayjobs.com')) return 'workday';
-  if (url.includes('smartrecruiters.com')) return 'smartrecruiters';
-  if (url.includes('jobvite.com')) return 'jobvite';
-  if (url.includes('builtin.com')) return 'builtin';
-  if (url.includes('myjobs.adp.com')) return 'adp';
-  return 'direct';
-}
+// getPlatform now powered by jobSites.js config
+const getPlatform = getPlatformFromUrl;
 
 function extractCompany(url, title) {
   try {
@@ -228,7 +178,6 @@ function extractCompany(url, title) {
     if (host.includes('smartrecruiters.com')) return capitalise(parts[1] || parts[0] || '');
     if (host.includes('jobvite.com')) return capitalise(parts[1] || '');
     if (host.includes('myjobs.adp.com')) {
-      // ADP URLs: /cx7_{company}careers/ or /{company}careers/
       const adpSlug = parts[0] || '';
       const adpMatch = adpSlug.match(/^(?:cx7_)?(.+?)(?:careers)?$/i);
       if (adpMatch) return capitalise(adpMatch[1]);
@@ -236,10 +185,10 @@ function extractCompany(url, title) {
     if (host.includes('builtin.com')) return capitalise(parts[1] || '');
   } catch {}
 
-  const atMatch = title.match(/\bat\s+([A-Z][A-Za-z0-9\s&.,']+?)(?:\s*[|\-–]|$)/);
+  const atMatch = title.match(/\bat\s+([A-Z][A-Za-z0-9\s&.,']+?)(?:\s*[|\-—]|$)/);
   if (atMatch) return atMatch[1].trim().slice(0, 60);
 
-  const dashMatch = title.match(/[-–]\s*([A-Z][A-Za-z0-9\s&.,]+?)\s*[|]/);
+  const dashMatch = title.match(/[-—]\s*([A-Z][A-Za-z0-9\s&.,]+?)\s*[|]/);
   if (dashMatch) return dashMatch[1].trim().slice(0, 60);
 
   return 'Unknown';
@@ -248,13 +197,13 @@ function extractCompany(url, title) {
 function extractJobTitle(rawTitle, company) {
   let t = rawTitle
     .replace(/\s*[|]\s*(Indeed|Glassdoor|LinkedIn|Lever|Greenhouse|Workday|SmartRecruiters|Jobvite|Built In).*$/i, '')
-    .replace(/\s*[-–]\s*(Indeed|Glassdoor|LinkedIn).*$/i, '');
+    .replace(/\s*[-—]\s*(Indeed|Glassdoor|LinkedIn).*$/i, '');
 
   if (company && company !== 'Unknown') {
     const safeCompany = company.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     t = t
       .replace(new RegExp(`\\s+at\\s+${safeCompany}.*$`, 'i'), '')
-      .replace(new RegExp(`\\s*[-–]\\s*${safeCompany}.*$`, 'i'), '');
+      .replace(new RegExp(`\\s*[-—]\\s*${safeCompany}.*$`, 'i'), '');
   }
   return t.trim().slice(0, 120) || rawTitle.slice(0, 120);
 }
@@ -281,7 +230,7 @@ function extractLocation(snippet, titleHint = '') {
 
 function extractSalary(snippet) {
   const text = snippet || '';
-  const range = text.match(/\$[\d,.]+[kK]?\s*[-–to]{1,3}\s*\$[\d,.]+[kK]?/);
+  const range = text.match(/\$[\d,.]+[kK]?\s*[-—to]{1,3}\s*\$[\d,.]+[kK]?/);
   if (range) return range[0];
   const annual = text.match(/\$[\d,.]+[kK]?\s*(?:per\s+year|\/yr|\/year|annual|pa\b)/i);
   if (annual) return annual[0];
@@ -290,16 +239,12 @@ function extractSalary(snippet) {
   return null;
 }
 
-// ─── Fit scoring (pure JS, no AI) ─────────────────────────────────────────
-
-
-// Low-signal patterns — aggregator pages / mismatches — penalise these
 const NOISE_PATTERNS = [
-  /\bjobs?\s+in\b/i,           // "IT Director Jobs in McKinney"
-  /\bemployment\b/i,           // "Employment in McKinney"
-  /\bvacancies?\b/i,           // "200 AI Strategist Vacancies"
-  /\bsalary\b/i,               // salary comparison pages
-  /\breviews?\b/i,             // company review pages
+  /\bjobs?\s+in\b/i,
+  /\bemployment\b/i,
+  /\bvacancies?\b/i,
+  /\bsalary\b/i,
+  /\breviews?\b/i,
 ];
 
 function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
@@ -309,16 +254,12 @@ function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
   const jobLower = jobTitle.toLowerCase();
   const textLower = fullText.toLowerCase();
 
-  // Hard disqualifier: noise patterns in the title (aggregator pages)
   if (NOISE_PATTERNS.some(p => p.test(jobTitle))) {
     return { titleMatch: 0, locationMatch: 0, salaryMatch: 0, skillsMatch: 0 };
   }
 
-  // Title match — 0 to 35
   let titleMatch = 0;
 
-  // Goal-term match: if a search goal was specified, it is the primary signal.
-  // All words in the goal must appear in the job title for a full score.
   if (goal) {
     const goalWords = goal.toLowerCase().trim().split(/\s+/).filter(w => w.length > 2);
     if (goalWords.length > 0) {
@@ -328,7 +269,6 @@ function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
     }
   }
 
-  // Profile role word overlap — supplements or replaces goal scoring
   for (const role of targetRoles) {
     const words = role.split(/\s+/).filter(w => w.length > 2);
     const matched = words.filter(w => jobLower.includes(w));
@@ -336,12 +276,10 @@ function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
     if (score > titleMatch) titleMatch = score;
   }
 
-  // Seniority check — must contain at least one senior-level word in title
   const seniorityWords = ['director', 'head', 'vp', 'vice president', 'chief', 'senior director', 'principal', 'lead', 'manager'];
   const hasSeniority = seniorityWords.some(w => jobLower.includes(w));
-  if (!hasSeniority) titleMatch = Math.min(titleMatch, 20); // cap non-senior roles
+  if (!hasSeniority) titleMatch = Math.min(titleMatch, 20);
 
-  // Location match — 0 to 25
   let locationMatch = 0;
   const locLower = (location || '').toLowerCase();
   const isRemoteJob = locLower.includes('remote');
@@ -357,10 +295,9 @@ function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
       }
     }
     if (locationMatch === 0 && isRemoteJob) locationMatch = 15;
-    if (locationMatch === 0 && wantsRemote) locationMatch = 5; // unspecified location slight credit
+    if (locationMatch === 0 && wantsRemote) locationMatch = 5;
   }
 
-  // Salary match — 0 to 20
   let salaryMatch = 0;
   if (salary) {
     const nums = (salary.match(/[\d,]+/g) || [])
@@ -376,7 +313,6 @@ function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
     }
   }
 
-  // Skills match — 0 to 20
   let matched = 0;
   for (const skill of skills) {
     const tokens = skill.split(/[\s&/]+/).filter(w => w.length > 3);
@@ -386,8 +322,6 @@ function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
 
   return { titleMatch, locationMatch, salaryMatch, skillsMatch };
 }
-
-// ─── Main extraction (replaces Claude call) ───────────────────────────────
 
 function extractAndScoreJobs(rawResults, profile, goal = '') {
   const seen = new Set();
@@ -435,8 +369,6 @@ function extractAndScoreJobs(rawResults, profile, goal = '') {
   return jobs.sort((a, b) => b.fitScore - a.fitScore).slice(0, 20);
 }
 
-// ─── runScout ─────────────────────────────────────────────────────────────
-
 async function runScout(goal = '') {
   const profile = readJSON(PROFILE_PATH, {});
 
@@ -476,8 +408,6 @@ async function runScout(goal = '') {
   const ws = getScoutWorkspace();
   const outPath = path.join(ws, `results-${today}.json`);
 
-  // Preserve any manually imported jobs from a previous run today so they
-  // are not wiped when Scout runs again on the same date
   const existing = readJSON(outPath, { results: [] });
   const preserved = (existing.results || []).filter(j => j.manuallyImported === true);
   const scoredUrls = new Set(scored.map(j => j.url));
@@ -498,8 +428,6 @@ async function runScout(goal = '') {
 
   return output;
 }
-
-// ─── Manual import ────────────────────────────────────────────────────────
 
 async function importJob({ url, title = '', company = '', salary = '' }) {
   if (!url || !/^https?:\/\//i.test(url)) {
@@ -577,8 +505,6 @@ async function importJob({ url, title = '', company = '', salary = '' }) {
   logger.info(`[SCOUT] Manually imported: "${jobTitle}" @ ${resolvedCompany} (fit: ${fitScore}) — ${url}`);
   return newJob;
 }
-
-// ─── Read helpers ─────────────────────────────────────────────────────────
 
 function getLatestResults() {
   const today = new Date().toISOString().split('T')[0];
