@@ -4,6 +4,7 @@ const PDFDocument = require('pdfkit');
 const { runAgent, parseJSONFromContent } = require('./agentBase');
 const { readJSON, writeJSON } = require('../utils/fileStore');
 const { logger } = require('../utils/logger');
+const { waterfallExtract } = require('../utils/searchProvider');
 
 const PROFILE_PATH = path.join(__dirname, '..', '..', 'memory', 'profile.json');
 const DEFAULT_WORKSPACE = path.join(__dirname, '..', '..', 'workspace-tailor');
@@ -69,14 +70,16 @@ function drawRule(doc, x, y, w, color, thickness) {
     .moveTo(x, y).lineTo(x + w, y).stroke().restore();
 }
 
-async function generatePDF(resumeText, coverText, outputFolder, nameSlug, titleSlug, yearMonth) {
+async function generatePDF(resumeText, coverText, outputFolder, nameSlug, titleSlug, yearMonth, job, jobDescText) {
   const resumePdfPath = path.join(outputFolder, `${nameSlug}_Resume_${titleSlug}.${yearMonth}.pdf`);
   const coverPdfPath = path.join(outputFolder, `${nameSlug}_CoverLetter_${titleSlug}.${yearMonth}.pdf`);
+  const jobDescPdfPath = path.join(outputFolder, `JobDescription_${titleSlug}.${yearMonth}.pdf`);
 
   await buildResumePDF(resumeText, resumePdfPath);
   await buildCoverPDF(coverText, coverPdfPath);
+  await buildJobDescriptionPDF(job || {}, jobDescText, jobDescPdfPath);
 
-  return { resumePdfPath, coverPdfPath };
+  return { resumePdfPath, coverPdfPath, jobDescPdfPath };
 }
 
 async function buildResumePDF(text, outputPath) {
@@ -256,6 +259,96 @@ async function buildCoverPDF(text, outputPath) {
   });
 }
 
+async function buildJobDescriptionPDF(job, descText, outputPath) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 0 });
+    const stream = fs.createWriteStream(outputPath);
+    doc.pipe(stream);
+
+    const W = 595, ML = 56, MW = W - ML - 56;
+    const ACCENT = '#1A3C5E';
+    const DARK = '#1A1A1A';
+    const MID = '#333333';
+    const LIGHT = '#6B6B6B';
+
+    // Header band
+    doc.rect(0, 0, W, 88).fill(ACCENT);
+    doc.fontSize(18).fillColor('#FFFFFF').font('Helvetica-Bold')
+      .text(safe(job.title || 'Job Description'), ML, 20, { width: MW });
+    doc.fontSize(11).fillColor('#C7D6E5').font('Helvetica')
+      .text(safe(job.company || ''), ML, 48, { width: MW });
+    const metaBits = [job.location, job.salary, job.platform]
+      .filter(Boolean).join('   •   ');
+    doc.fontSize(8.5).fillColor('#9FB6CC').font('Helvetica')
+      .text(safe(metaBits), ML, 66, { width: MW });
+
+    let y = 108;
+    if (job.url) {
+      doc.fontSize(8.5).fillColor(ACCENT).font('Helvetica')
+        .text(safe(job.url), ML, y, { width: MW, link: job.url, underline: true });
+      y = doc.y + 10;
+    }
+    drawRule(doc, ML, y, MW, '#D8DEE5', 1);
+    y += 14;
+
+    const BOTTOM = 805;          // last usable y before a page break
+    const PAGE_TOP = 44;
+
+    // Strip Jina/markdown image lines and collapse blank runs so the full
+    // posting reads cleanly across pages.
+    const lines = String(descText || 'No description available.')
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')        // markdown images
+      .replace(/\r/g, '')
+      .split('\n')
+      .map(l => l.replace(/[ \t]+$/g, ''));
+
+    let blankRun = 0;
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) {
+        // collapse 3+ consecutive blank lines to one gap
+        if (++blankRun <= 2) y += 6;
+        continue;
+      }
+      blankRun = 0;
+
+      // Markdown bullets / headings → cleaned, styled
+      const isMdBullet = /^[-*•]\s+/.test(line);
+      const cleaned = line.replace(/^#{1,6}\s*/, '').replace(/^[-*•]\s+/, '').replace(/\*\*/g, '');
+      const isHeading = /^#{1,6}\s/.test(line) ||
+        (cleaned.length < 60 && /^[A-Z][A-Za-z0-9 &/\-’',.]+:?$/.test(cleaned) && !isMdBullet);
+
+      const fontSize = isHeading ? 11 : 9.5;
+      const indentX = isMdBullet ? ML + 14 : ML;
+      const textW = isMdBullet ? MW - 14 : MW;
+      const display = isMdBullet ? `•  ${cleaned}` : cleaned;
+
+      doc.fontSize(fontSize)
+        .font(isHeading ? 'Helvetica-Bold' : 'Helvetica');
+      const h = doc.heightOfString(safe(display), { width: textW, lineGap: 3 });
+
+      // Page-break BEFORE drawing if this block would overflow.
+      if (y + h > BOTTOM) { doc.addPage(); y = PAGE_TOP; }
+      if (isHeading) y += 6;
+
+      doc.fillColor(isHeading ? DARK : MID)
+        .text(safe(display), indentX, y, { width: textW, lineGap: 3 });
+      y = doc.y + (isHeading ? 6 : 4);
+    }
+
+    // Footer on a guaranteed-clear spot: if the last content is near the
+    // page bottom, start a fresh page so the footer never overlaps text.
+    if (y + 24 > BOTTOM) { doc.addPage(); y = PAGE_TOP; }
+    doc.fontSize(7.5).fillColor(LIGHT).font('Helvetica')
+      .text(`Source: ${safe(job.url || '')}  •  Captured ${new Date().toLocaleString()}`,
+        ML, y + 10, { width: MW });
+
+    doc.end();
+    stream.on('finish', () => resolve(outputPath));
+    stream.on('error', reject);
+  });
+}
+
 // ─── MAIN TAILOR FUNCTION ─────────────────────────────────────────────────────
 function inferIndustry(job, profile, reconIntel) {
   const targets = (profile.targetIndustries || []);
@@ -392,14 +485,39 @@ RULES:
 - Return ONLY the cover letter text — no subject line, no JSON wrapper
 `;
 
-  const resumeResult = await runAgent('tailor', resumePrompt, sessionId);
+  // Resume and cover prompts are built independently above and the cover
+  // call does not consume the resume result — generate both concurrently
+  // to roughly halve per-job TAILOR time.
+  const [resumeResult, coverResult] = await Promise.all([
+    runAgent('tailor', resumePrompt, sessionId),
+    runAgent('tailor', coverPrompt, `${sessionId}-cover`),
+  ]);
   const tailoredResume = parseJSONFromContent(resumeResult.content);
-
-  const coverResult = await runAgent('tailor', coverPrompt, `${sessionId}-cover`);
   const coverLetter = coverResult.content;
 
   // Use resumeText (new) or fall back to resumeMarkdown (legacy)
   const resumeText = tailoredResume?.resumeText || tailoredResume?.resumeMarkdown || resumeResult.content;
+
+  // ── FULL JOB DESCRIPTION (fetched live at generate time) ───────────────────
+  // Fetch the live posting so the Job Description PDF holds the full text.
+  // If the fetch fails, fall back to the stored snippet so Generate never
+  // breaks just because a page was unreachable.
+  let jobDescText = job.snippet || '';
+  try {
+    if (job.url) {
+      const extracted = await waterfallExtract(job.url, { maxChars: 0 });
+      const full = (extracted && extracted.content || '').trim();
+      if (full && full.length > jobDescText.length) {
+        jobDescText = full;
+        logger.info(`[TAILOR] Full job description fetched (${full.length} chars) for ${job.company} - ${job.title}`);
+      } else {
+        logger.warn(`[TAILOR] JD fetch returned little for ${job.url} — using stored snippet`);
+      }
+    }
+  } catch (jdErr) {
+    logger.warn(`[TAILOR] JD fetch failed for ${job.url}: ${jdErr.message} — using stored snippet`);
+  }
+  if (!jobDescText) jobDescText = 'No description available.';
 
   // ── SAVE FILES ────────────────────────────────────────────────────────────
   const appFolder = getApplicationFolder(job.company, job.title);
@@ -413,23 +531,28 @@ RULES:
   const jobPath = path.join(appFolder, 'job.json');
   const metaPath = path.join(appFolder, 'metadata.json');
 
-  // Generate PDFs
+  // Generate PDFs (resume, cover letter, job description)
   let resumePdfPath = null;
   let coverPdfPath = null;
+  let jobDescPdfPath = null;
   try {
-    const paths = await generatePDF(resumeText, coverLetter, appFolder, nameSlug, titleSlug, yearMonth);
+    const paths = await generatePDF(resumeText, coverLetter, appFolder, nameSlug, titleSlug, yearMonth, job, jobDescText);
     resumePdfPath = paths.resumePdfPath;
     coverPdfPath = paths.coverPdfPath;
-    logger.info(`[TAILOR] PDFs generated for ${job.company} - ${job.title}`);
+    jobDescPdfPath = paths.jobDescPdfPath;
+    logger.info(`[TAILOR] 3 PDFs generated (resume, cover, job description) for ${job.company} - ${job.title}`);
   } catch (pdfErr) {
     logger.error(`[TAILOR] PDF generation failed: ${pdfErr.message}`);
     // Fallback: save as plain text
     const resumeFallback = path.join(appFolder, `${nameSlug}_Resume_${titleSlug}_${companySlug}.${yearMonth}.txt`);
     const coverFallback = path.join(appFolder, `${nameSlug}_CoverLetter_${titleSlug}.${yearMonth}.txt`);
+    const jdFallback = path.join(appFolder, `JobDescription_${titleSlug}.${yearMonth}.txt`);
     fs.writeFileSync(resumeFallback, resumeText, 'utf8');
     fs.writeFileSync(coverFallback, coverLetter, 'utf8');
+    fs.writeFileSync(jdFallback, `${job.title || ''} — ${job.company || ''}\n${job.url || ''}\n\n${jobDescText}`, 'utf8');
     resumePdfPath = resumeFallback;
     coverPdfPath = coverFallback;
+    jobDescPdfPath = jdFallback;
   }
 
   writeJSON(jobPath, job);
@@ -448,6 +571,7 @@ RULES:
     folder: appFolder,
     resumePdfPath,
     coverPdfPath,
+    jobDescPdfPath,
   });
 
   logger.info(`[TAILOR] Package complete for ${job.company} - ${job.title} (ATS: ${tailoredResume?.atsScore || 'N/A'})`);
@@ -461,6 +585,7 @@ RULES:
     keywordsInjected: tailoredResume?.keywordsInjected || [],
     resumePath: resumePdfPath,
     coverPath: coverPdfPath,
+    jobDescPath: jobDescPdfPath,
     folder: appFolder,
     resumeContent: resumeText,
     coverContent: coverLetter,

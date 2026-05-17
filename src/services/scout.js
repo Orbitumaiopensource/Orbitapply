@@ -5,6 +5,7 @@ const { filterScoutResults } = require('./guardian');
 const { logger } = require('../utils/logger');
 const { SEARCH_DOMAINS, getPlatformFromUrl } = require('../config/jobSites');
 const { waterfallSearch, waterfallExtract } = require('../utils/searchProvider');
+const { FIT_SCORE_MIN } = require('../utils/constants');
 
 const PROFILE_PATH = path.join(__dirname, '..', '..', 'memory', 'profile.json');
 const DEFAULT_WORKSPACE = path.join(__dirname, '..', '..', 'workspace-scout');

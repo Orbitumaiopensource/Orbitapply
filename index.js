@@ -16,6 +16,7 @@ const sessionsRoutes = require('./src/routes/sessions');
 const documentsRoutes = require('./src/routes/documents');
 const configRoutes = require('./src/routes/config');
 const submitRoutes = require('./src/routes/submit');
+const autoApplyRoutes = require('./src/routes/autoApply');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,6 +38,7 @@ app.use('/api/v1/sessions', sessionsRoutes);
 app.use('/api/v1/documents', documentsRoutes);
 app.use('/api/v1/config', configRoutes);
 app.use('/api/v1/submit', submitRoutes);
+app.use('/api/v1/autoapply', autoApplyRoutes);
 
 app.use(express.static(path.join(__dirname, 'ui')));
 app.get('*', (req, res) => {

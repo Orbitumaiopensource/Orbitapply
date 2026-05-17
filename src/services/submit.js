@@ -462,7 +462,7 @@ function getUncoveredSensitiveFields(detectedFields, fieldValues) {
   return detectedFields.filter(f => !coveredCanonicals.has(f));
 }
 
-async function fillAshbyForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId) {
+async function fillAshbyForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId, dryRun = false) {
   logger.info('[SUBMIT] Filling Ashby form');
   let pageNum = 1;
   const config = loadConfig();
@@ -587,6 +587,13 @@ async function fillAshbyForm(page, profile, resumePath, coverPath, resumeText, c
     await takeScreenshot(page, jobId, pageNum++, screenshots);
   }
 
+  // ── Dry run: form is filled — stop before clicking Submit ──
+  if (dryRun) {
+    await takeScreenshot(page, jobId, pageNum++, screenshots);
+    logger.info('[SUBMIT] Ashby: dry run — form filled, Submit NOT clicked');
+    return { paused: false, submitted: false, dryRun: true, error: 'Dry run — form filled; final Submit not clicked. Review screenshots, then submit from Auto-Apply.' };
+  }
+
   // ── Submit ──
   try {
     const submitBtn = page
@@ -650,7 +657,7 @@ async function fillAshbyForm(page, profile, resumePath, coverPath, resumeText, c
   }
 }
 
-async function fillGreenhouseForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId) {
+async function fillGreenhouseForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId, dryRun = false) {
   logger.info('[SUBMIT] Filling Greenhouse form');
   let pageNum = 1;
 
@@ -671,6 +678,12 @@ async function fillGreenhouseForm(page, profile, resumePath, coverPath, resumeTe
     await takeScreenshot(page, jobId, pageNum++, screenshots);
   }
 
+  if (dryRun) {
+    await takeScreenshot(page, jobId, pageNum++, screenshots);
+    logger.info('[SUBMIT] Greenhouse: dry run — form filled, Submit NOT clicked');
+    return { paused: false, submitted: false, dryRun: true, error: 'Dry run — form filled; final Submit not clicked. Review screenshots, then submit from Auto-Apply.' };
+  }
+
   try {
     const submitBtn = page.locator('button[type="submit"], input[type="submit"]').filter({ hasText: /submit|apply/i }).first();
     if (await submitBtn.count() > 0) {
@@ -689,7 +702,7 @@ async function fillGreenhouseForm(page, profile, resumePath, coverPath, resumeTe
   return { paused: false, submitted: true };
 }
 
-async function fillLeverForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId) {
+async function fillLeverForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId, dryRun = false) {
   logger.info('[SUBMIT] Filling Lever form');
   let pageNum = 1;
 
@@ -720,6 +733,12 @@ async function fillLeverForm(page, profile, resumePath, coverPath, resumeText, c
   const config = loadConfig();
   if (config?.submit?.screenshotOnEachPage) {
     await takeScreenshot(page, jobId, pageNum++, screenshots);
+  }
+
+  if (dryRun) {
+    await takeScreenshot(page, jobId, pageNum++, screenshots);
+    logger.info('[SUBMIT] Lever: dry run — form filled, Submit NOT clicked');
+    return { paused: false, submitted: false, dryRun: true, error: 'Dry run — form filled; final Submit not clicked. Review screenshots, then submit from Auto-Apply.' };
   }
 
   try {
@@ -812,7 +831,10 @@ async function fillDirectForm(page, profile, resumePath, coverPath, resumeText, 
   return { paused: false, submitted: false, error: 'Direct page — form filled but auto-submit skipped for safety; review screenshots' };
 }
 
-async function runSubmit({ jobId, pipelineId, url, platform, resumePath, coverPath, fieldValues = {} }) {
+// `dryRun` (default false) makes supported-platform fillers stop *before* the
+// final Submit click — form is filled and screenshotted for human review, but
+// nothing is sent. Existing callers omit it and keep their exact behavior.
+async function runSubmit({ jobId, pipelineId, url, platform, resumePath, coverPath, fieldValues = {}, dryRun = false }) {
   const result = {
     ...SUBMIT_RESULT_DEFAULTS,
     jobId,
@@ -886,13 +908,13 @@ async function runSubmit({ jobId, pipelineId, url, platform, resumePath, coverPa
 
     switch (detectedPlatform) {
       case 'ashby':
-        fillResult = await fillAshbyForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId);
+        fillResult = await fillAshbyForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId, dryRun);
         break;
       case 'greenhouse':
-        fillResult = await fillGreenhouseForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId);
+        fillResult = await fillGreenhouseForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId, dryRun);
         break;
       case 'lever':
-        fillResult = await fillLeverForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId);
+        fillResult = await fillLeverForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId, dryRun);
         break;
       case 'smartrecruiters':
         fillResult = await fillSmartRecruitersForm(page, profile, resumePath, coverPath, resumeText, coverText, fieldValues, screenshots, jobId);
@@ -916,9 +938,11 @@ async function runSubmit({ jobId, pipelineId, url, platform, resumePath, coverPa
       }
     } else {
       result.status = 'form_filled';
+      result.dryRun = Boolean(fillResult.dryRun);
       result.error = fillResult.error || 'Form filled but auto-submit not completed';
       logger.info(`[SUBMIT] Job ${jobId} form filled — ${result.error}`);
-      if (pipelineId) {
+      // A dry run did NOT submit — never mark the ledger as applied for it.
+      if (pipelineId && !fillResult.dryRun) {
         updateLedgerSubmitted(pipelineId, new Date().toISOString());
       }
     }

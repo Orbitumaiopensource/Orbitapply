@@ -20,6 +20,7 @@ workspace-recon/
 workspace-submit/
 workspace-ledger/
 workspace-coach/
+workspace-autoapply/
 logs/*.log
 
 # Generated application output (personal — your resumes, cover letters, job data)

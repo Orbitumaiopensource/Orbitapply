@@ -26,6 +26,11 @@
     "maxQueries": 15,
     "maxResultsPerQuery": 15
   },
+  "run": {
+    "autoTailor": false,
+    "maxReconPerRun": 8,
+    "maxTailorPerRun": 8
+  },
   "budget": {
     "dailyLimitUSD": 5,
     "hardStop": true,
@@ -79,5 +84,11 @@
     "screenshotOnEachPage": true,
     "maxSubmitRetries": 1,
     "unsupportedPlatforms": ["workday", "icims"]
+  },
+  "autoApply": {
+    "enabled": true,
+    "defaultAutoSubmit": false,
+    "supportedPlatforms": ["greenhouse", "lever", "ashby"],
+    "workspace": "./workspace-autoapply"
   }
 }

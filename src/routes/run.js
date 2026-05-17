@@ -15,6 +15,17 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.post('/stop', (req, res) => {
+  try {
+    const result = orbi.stopRun();
+    if (result.error) return res.status(409).json({ error: result.error });
+    res.json(result);
+  } catch (err) {
+    logger.error(`POST /run/stop failed: ${err.message}`, err);
+    res.status(500).json({ error: 'Failed to stop run.' });
+  }
+});
+
 router.get('/status', (req, res) => {
   res.json(orbi.getRunStatus());
 });

@@ -9,6 +9,7 @@
     "workspace-submit/",
     "workspace-ledger/",
     "workspace-coach/",
+    "workspace-autoapply/",
     "sessions/",
     "logs/",
     "memory/",

@@ -4,7 +4,7 @@ const { runScout, getLatestResults } = require('./scout');
 const { runRecon } = require('./recon');
 const { runTailor } = require('./tailor');
 const ledger = require('./ledger');
-const { FIT_SCORE_MIN, TAILOR_SCORE_MIN } = require('../utils/constants');
+const { FIT_SCORE_MIN, TAILOR_SCORE_MIN, MAX_RECON_PER_RUN, MAX_TAILOR_PER_RUN } = require('../utils/constants');
 const { readJSON } = require('../utils/fileStore');
 const path = require('path');
 
@@ -18,10 +18,37 @@ let currentRun = {
   startedAt: null,
   result: null,
   error: null,
+  cancelRequested: false,
 };
 
 function getRunStatus() {
   return currentRun;
+}
+
+// Cooperative cancel: sets a flag the run loop checks at each step / job
+// boundary. It cannot abort an in-flight AI call, but stops everything after.
+function stopRun() {
+  if (!currentRun.running) {
+    return { error: 'No run is in progress.' };
+  }
+  currentRun.cancelRequested = true;
+  currentRun.step = 'Stopping…';
+  logger.info('[ORBI] Stop requested — will halt at next step boundary');
+  return { stopping: true };
+}
+
+function isCancelled() {
+  return currentRun.cancelRequested === true;
+}
+
+function finishCancelled() {
+  currentRun.running = false;
+  currentRun.step = 'Cancelled';
+  currentRun.error = 'Run cancelled by user.';
+  currentRun.steps = currentRun.steps.map(s =>
+    s.status === 'active' || s.status === 'pending' ? { ...s, status: 'error' } : s
+  );
+  logger.info('[ORBI] Run cancelled by user');
 }
 
 function updateStep(label, status = 'active') {
@@ -67,6 +94,7 @@ async function startRun(goal = '') {
     startedAt: new Date().toISOString(),
     result: null,
     error: null,
+    cancelRequested: false,
     goal,
   };
 
@@ -92,16 +120,52 @@ async function executeRun(sessionId, goal) {
       return;
     }
     completeStep('SCOUT: Job Discovery');
+    if (isCancelled()) return finishCancelled();
 
-    const qualifiedJobs = (scoutOutput.results || []).filter(j => j.fitScore >= FIT_SCORE_MIN && !j.rejected);
-    logger.info(`[ORBI] ${qualifiedJobs.length} qualified jobs (fitScore >= ${FIT_SCORE_MIN})`);
+    // Manually imported (user-chosen by URL) jobs always qualify, regardless
+    // of fit score. Auto-discovered jobs still gated by FIT_SCORE_MIN.
+    const qualifiedJobs = (scoutOutput.results || []).filter(
+      j => !j.rejected && (j.manuallyImported || j.fitScore >= FIT_SCORE_MIN)
+    );
+    logger.info(`[ORBI] ${qualifiedJobs.length} qualified jobs (fit >= ${FIT_SCORE_MIN} or manually imported)`);
+
+    // Per-run caps (config-overridable) so the run finishes in minutes, not
+    // 15+. Jobs are already sorted by fitScore desc, so we take the top N.
+    const cfg = readJSON(CONFIG_PATH, {});
+    const maxRecon = cfg?.run?.maxReconPerRun ?? MAX_RECON_PER_RUN;
+    const maxTailor = cfg?.run?.maxTailorPerRun ?? MAX_TAILOR_PER_RUN;
+
+    // Discovery-only mode (DEFAULT): the run just finds + saves all jobs to
+    // the SCOUT results list. Resume + cover are NOT auto-generated — they're
+    // created per-job, on demand, when the user clicks "Generate" on a row
+    // (which runs TAILOR for that single job). Set run.autoTailor:true to
+    // restore automatic tailoring of every qualified job.
+    const autoTailor = cfg?.run?.autoTailor === true;
+    if (!autoTailor) {
+      updateStep('RECON: Company Intel', 'skipped');
+      updateStep('TAILOR: Documents', 'skipped');
+      updateStep('LEDGER: Pipeline', 'skipped');
+      currentRun.running = false;
+      currentRun.step = 'Complete — jobs saved (generate docs on demand)';
+      currentRun.result = {
+        jobsFound: scoutOutput.totalFound,
+        jobsQualified: qualifiedJobs.length,
+        companiesResearched: 0,
+        documentsGenerated: 0,
+        addedToPipeline: 0,
+        mode: 'discovery-only',
+      };
+      logger.info(`[ORBI] Discovery-only run complete — ${qualifiedJobs.length} jobs saved (autoTailor off)`);
+      return;
+    }
 
     // ── RECON ──────────────────────────────────────────────────────────────
     updateStep('RECON: Company Intel');
     const reconResults = {};
     let reconApiBlocked = false;
-    for (const job of qualifiedJobs.slice(0, 8)) {
+    for (const job of qualifiedJobs.slice(0, maxRecon)) {
       if (reconApiBlocked) break;
+      if (isCancelled()) return finishCancelled();
       try {
         const intel = await runRecon(job.company, job.title, sessionId);
         reconResults[job.company] = intel;
@@ -114,16 +178,28 @@ async function executeRun(sessionId, goal) {
       }
     }
     completeStep('RECON: Company Intel');
+    if (isCancelled()) return finishCancelled();
 
     // ── TAILOR ─────────────────────────────────────────────────────────────
     // Process ALL jobs at or above TAILOR_SCORE_MIN so ≥80% of qualified get docs
-    const tailorCandidates = qualifiedJobs.filter(j => j.fitScore >= TAILOR_SCORE_MIN);
-    logger.info(`[ORBI] ${tailorCandidates.length} jobs eligible for TAILOR (fitScore >= ${TAILOR_SCORE_MIN})`);
+    // Manually imported jobs are always tailored (and not subject to the
+    // per-run cap). Auto-discovered jobs are gated by score and capped.
+    const manualCandidates = qualifiedJobs.filter(j => j.manuallyImported);
+    const autoCandidates = qualifiedJobs
+      .filter(j => !j.manuallyImported && j.fitScore >= TAILOR_SCORE_MIN)
+      .slice(0, maxTailor);
+    const tailorCandidates = [...manualCandidates, ...autoCandidates];
+    logger.info(`[ORBI] ${tailorCandidates.length} jobs for TAILOR (${manualCandidates.length} manual + ${autoCandidates.length} auto, fit >= ${TAILOR_SCORE_MIN}, cap ${maxTailor}/run)`);
     updateStep('TAILOR: Documents');
     const tailorResults = [];
     let tailorApiBlocked = false;
+    let tailorIdx = 0;
     for (const job of tailorCandidates) {
       if (tailorApiBlocked) break;
+      if (isCancelled()) return finishCancelled();
+      tailorIdx++;
+      // Live progress so the UI doesn't look frozen during the slow loop.
+      currentRun.step = `TAILOR: Documents (${tailorIdx}/${tailorCandidates.length}) — ${job.company}`;
       try {
         const snippetLower = (job.snippet || '').toLowerCase();
         const formFields = [];
@@ -162,6 +238,7 @@ async function executeRun(sessionId, goal) {
       }
     }
     completeStep('TAILOR: Documents');
+    if (isCancelled()) return finishCancelled();
 
     updateStep('LEDGER: Pipeline');
     for (const tailor of tailorResults) {
@@ -202,4 +279,4 @@ async function executeRun(sessionId, goal) {
   }
 }
 
-module.exports = { startRun, getRunStatus };
+module.exports = { startRun, getRunStatus, stopRun };

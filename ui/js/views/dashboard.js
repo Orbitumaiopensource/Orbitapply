@@ -44,6 +44,9 @@ async function renderDashboard() {
         <div id="run-progress" style="display:none">
           <div class="progress-steps" id="run-steps"></div>
           <p style="margin-top:12px;font-size:12px;color:#9CA3AF;text-align:center" id="run-step-label"></p>
+          <div style="text-align:center;margin-top:14px">
+            <button class="btn btn-secondary btn-sm" id="run-stop-btn" onclick="handleRunStop()">■ Stop Run</button>
+          </div>
         </div>
         <div id="run-idle">
           <input type="text" id="run-goal" class="form-input" placeholder="Goal: e.g. AI Product Manager roles in NYC, $120k+" style="margin-bottom:12px;background:#2D2D3A;border-color:#3D3D4A;color:#fff;" />
@@ -386,6 +389,21 @@ async function handleRunStart() {
     await loadDashboardData();
   } catch (err) {
     showAlert('run-alert', err.message, 'error');
+  }
+}
+
+async function handleRunStop() {
+  const btn = el('run-stop-btn');
+  if (!confirm('Stop the current run? It halts after the current step/job — work already done is kept.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = '■ Stopping…'; }
+  try {
+    const r = await API.post('/api/v1/run/stop', {});
+    if (r.error) { showAlert('run-alert', r.error, 'error'); }
+    else { showAlert('run-alert', 'Stop requested — the run will halt at the next step boundary.', 'warn'); }
+  } catch (err) {
+    showAlert('run-alert', err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '■ Stop Run'; }
   }
 }
 

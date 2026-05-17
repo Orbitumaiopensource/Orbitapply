@@ -67,6 +67,7 @@ async function renderScout() {
 let _docStatus = {};
 let _allResults = [];
 let _activeFilter = 0;
+let _autoEligible = {};
 
 function setScoreFilter(min) {
   _activeFilter = min;
@@ -97,10 +98,15 @@ function renderScoutTable() {
 }
 async function loadScoutResults() {
   try {
-    const [data, apps] = await Promise.all([
+    const [data, apps, autoElig] = await Promise.all([
       API.get('/api/v1/scout/results'),
       API.get('/api/v1/tailor/applications').catch(() => []),
+      API.get('/api/v1/autoapply/eligible').catch(() => ({ jobs: [] })),
     ]);
+    _autoEligible = {};
+    for (const j of (autoElig.jobs || [])) {
+      if (j.eligible) _autoEligible[j.id] = true;
+    }
     const results = data.results || [];
     const container = el('scout-content');
 
@@ -194,7 +200,8 @@ function renderScoutRow(job, rowNum) {
   const rejected = job.rejected;
   const docApp = _docStatus[job.id];
   const hasDoc = !!docApp;
-  const canGenerate = job.fitScore >= 60;
+  // Manually imported jobs are user-chosen — allow docs regardless of fit.
+  const canGenerate = job.fitScore >= 60 || job.manuallyImported;
 
   const rowBg = approved ? '#F0FDF4' : rejected ? '#FFF1F2' : '';
   const rowOpacity = rejected ? '0.55' : '1';
@@ -227,6 +234,7 @@ function renderScoutRow(job, rowNum) {
         <div style="display:flex;align-items:center;gap:6px">
           <span style="font-size:13px;font-weight:600;color:var(--text-primary)">${escapeHtml(job.title)}</span>
           ${job.manuallyImported ? `<span style="font-size:10px;font-weight:600;padding:1px 6px;background:#EEF2FF;color:#4338CA;border-radius:20px;white-space:nowrap">Manual</span>` : ''}
+          ${_autoEligible[job.id] ? `<span title="Eligible for autonomous apply — see the Auto-Apply page" style="font-size:10px;font-weight:600;padding:1px 6px;background:#D1FAE5;color:#065F46;border-radius:20px;white-space:nowrap">⚡ Auto</span>` : ''}
         </div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${escapeHtml(job.company)}</div>
       </td>
@@ -279,7 +287,7 @@ async function generateAllDocs() {
     const pool = _activeFilter > 0
       ? _allResults.filter(j => j.fitScore >= _activeFilter)
       : _allResults;
-    const eligible = pool.filter(j => j.fitScore >= 60 && !_docStatus[j.id]);
+    const eligible = pool.filter(j => (j.fitScore >= 60 || j.manuallyImported) && !_docStatus[j.id]);
 
     if (!eligible.length) {
       showAlert('scout-alert', 'All visible jobs already have documents.', 'success');

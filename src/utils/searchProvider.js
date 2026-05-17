@@ -339,7 +339,14 @@ async function waterfallSearch(query, depth = 'basic', domains = []) {
  * @param {string} url
  * @returns {Promise<{title: string, content: string} | null>}
  */
-async function waterfallExtract(url) {
+// `maxChars` defaults to 2000 to preserve existing callers (SCOUT snippet
+// only takes 400 anyway). Pass { maxChars: 0 } for the full page text
+// (used by TAILOR's Job Description PDF).
+async function waterfallExtract(url, { maxChars = 2000 } = {}) {
+  const clip = (s) => {
+    const str = String(s || '');
+    return maxChars > 0 ? str.slice(0, maxChars) : str;
+  };
   // 1. Tavily extract
   if (process.env.TAVILY_API_KEY) {
     try {
@@ -351,7 +358,7 @@ async function waterfallExtract(url) {
       const result = response.data?.results?.[0];
       if (result?.raw_content) {
         logger.debug(`[SEARCH] Extracted via Tavily: ${url}`);
-        return { title: result.title || '', content: result.raw_content.slice(0, 2000) };
+        return { title: result.title || '', content: clip(result.raw_content) };
       }
     } catch (err) {
       logger.debug(`[SEARCH] Tavily extract failed: ${err.message}`);
@@ -370,7 +377,7 @@ async function waterfallExtract(url) {
     const data = response.data?.data;
     if (data?.content) {
       logger.debug(`[SEARCH] Extracted via Jina: ${url}`);
-      return { title: data.title || '', content: data.content.slice(0, 2000) };
+      return { title: data.title || '', content: clip(data.content) };
     }
   } catch (err) {
     logger.debug(`[SEARCH] Jina extract failed: ${err.message}`);
@@ -382,7 +389,7 @@ async function waterfallExtract(url) {
       timeout: 10000,
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; OrbitApply/1.0)' },
     });
-    const text = (response.data || '').toString().replace(/<[^>]+>/g, ' ').slice(0, 2000);
+    const text = clip((response.data || '').toString().replace(/<[^>]+>/g, ' '));
     logger.debug(`[SEARCH] Extracted via raw GET: ${url}`);
     return { title: '', content: text };
   } catch (err) {
