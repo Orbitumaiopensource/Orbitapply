@@ -13,6 +13,9 @@ const CONFIG_PATH = path.join(__dirname, '..', '..', 'orbitapply.json');
 
 const MIN_DISPLAY_SCORE = 40;
 const MAX_RESULTS_PER_QUERY = 15;
+// How many scored jobs SCOUT keeps per run. Override via
+// orbitapply.json → scout.maxResults; falls back to this if unset/invalid.
+const DEFAULT_MAX_RESULTS = 20;
 
 const EXPIRED_JOB_PHRASES = [
   'no longer accepting applications',
@@ -57,6 +60,12 @@ function isExpiredJob(text) {
   return EXPIRED_JOB_PHRASES.some(phrase => lower.includes(phrase));
 }
 
+function getScoutMaxResults() {
+  const config = readJSON(CONFIG_PATH, {});
+  const n = Number(config?.scout?.maxResults);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_MAX_RESULTS;
+}
+
 function getScoutWorkspace() {
   const config = readJSON(CONFIG_PATH, {});
   if (config.outputFolder && fs.existsSync(config.outputFolder)) {
@@ -90,7 +99,11 @@ function isJobDetailUrl(url) {
 function buildSearchQueries(profile, goal = '') {
   const items = [];
   const atsStr = 'site:lever.co OR site:greenhouse.io OR site:jobs.ashbyhq.com OR site:myworkdayjobs.com';
-  const adpStr = 'site:myjobs.adp.com OR site:linkedin.com/jobs';
+  // Target LinkedIn's individual-posting path (/jobs/view/<id>). The broader
+  // /jobs path also surfaces /jobs/search & /jobs/results pages, which
+  // isJobDetailUrl() rejects — so be precise to keep usable postings.
+  const liStr = 'site:linkedin.com/jobs/view';
+  const adpStr = `site:myjobs.adp.com OR ${liStr}`;
 
   const goalTerm = (goal || '').trim();
   const profileRoles = (profile.targetRoles || []);
@@ -112,6 +125,8 @@ function buildSearchQueries(profile, goal = '') {
     items.push({ query: `"${term}" apply now ${adpStr}`, depth: 'basic' });
     if (isGoal) {
       items.push({ query: `"${term}" hiring remote ${atsStr}`, depth: 'advanced' });
+      // Dedicated LinkedIn pass for the highest-intent (goal) term
+      items.push({ query: `"${term}" remote ${liStr}`, depth: 'advanced' });
     }
   }
 
@@ -420,7 +435,7 @@ function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
   return { titleMatch, locationMatch, salaryMatch, skillsMatch };
 }
 
-function extractAndScoreJobs(rawResults, profile, goal = '') {
+function extractAndScoreJobs(rawResults, profile, goal = '', maxResults = DEFAULT_MAX_RESULTS) {
   const seen = new Set();
   const jobs = [];
 
@@ -467,7 +482,7 @@ function extractAndScoreJobs(rawResults, profile, goal = '') {
     });
   });
 
-  return jobs.sort((a, b) => b.fitScore - a.fitScore).slice(0, 20);
+  return jobs.sort((a, b) => b.fitScore - a.fitScore).slice(0, maxResults);
 }
 
 async function runScout(goal = '') {
@@ -495,7 +510,7 @@ async function runScout(goal = '') {
 
   logger.info(`[SCOUT] ${rawResults.length} raw results — scoring locally`);
 
-  const scored = filterScoutResults(extractAndScoreJobs(rawResults, profile, goal));
+  const scored = filterScoutResults(extractAndScoreJobs(rawResults, profile, goal, getScoutMaxResults()));
 
   const today = new Date().toISOString().split('T')[0];
   const ws = getScoutWorkspace();

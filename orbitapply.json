@@ -24,7 +24,8 @@
     "minDisplayScore": 50,
     "minQualifiedScore": 70,
     "maxQueries": 15,
-    "maxResultsPerQuery": 15
+    "maxResultsPerQuery": 15,
+    "maxResults": 50
   },
   "run": {
     "autoTailor": false,

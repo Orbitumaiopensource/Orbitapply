@@ -64,6 +64,8 @@ Everything runs at `http://localhost:3000`. Your data never leaves your machine.
 ### SCOUT — Job Discovery (No AI cost)
 Runs 15 parallel searches across 40+ job sites using a waterfall of 7 search providers (Tavily → Brave → SerpAPI → Bing → Google → Jina → DuckDuckGo). Scores every result locally in pure JavaScript — zero AI cost at this stage. Resolves the employer name from title patterns, snippet text, and company-owned career hosts, and filters out aggregator search/browse pages — no AI required.
 
+LinkedIn is included as a public source: SCOUT targets the individual-posting path (`linkedin.com/jobs/view`) so search engines return real job pages rather than listing/search pages, with a dedicated LinkedIn pass for your highest-intent (goal) term. No LinkedIn login or scraping is involved — only publicly indexed postings. The number of scored jobs kept per run is configurable via `orbitapply.json` → `scout.maxResults` (default: 50).
+
 **Fit scoring (0–100):**
 | Factor | Points |
 |---|---|
@@ -224,6 +226,8 @@ OrbitApply lets you control search quality from the **Profile Setup UI** — no 
 - **Exclude titles** — filter out junior, intern, or irrelevant roles automatically
 - **Minimum fit score** — set your own quality threshold (default: 50)
 - **Minimum qualify score** — set the threshold for auto-passing to RECON + TAILOR (default: 70)
+
+You can also raise how many scored jobs SCOUT keeps per run in `orbitapply.json` → `scout.maxResults` (default: 50; falls back to 20 if unset or invalid).
 
 ---
 

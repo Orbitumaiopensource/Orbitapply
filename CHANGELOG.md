@@ -4,6 +4,16 @@ All notable changes to OrbitApply are documented here.
 
 ---
 
+## [1.3.0] — 2026-05-17
+
+### Added
+- **Configurable SCOUT result cap** — `orbitapply.json` → `scout.maxResults` (default: 50) controls how many scored jobs SCOUT keeps per run. Previously hardcoded to 20 in `extractAndScoreJobs`. Falls back to 20 if the key is missing or invalid, so existing configs keep working.
+
+### Improved
+- `src/services/scout.js` — LinkedIn job-search tuning. Queries now target the individual-posting path (`site:linkedin.com/jobs/view`) instead of the broad `linkedin.com/jobs` path, which surfaced `/jobs/search` & `/jobs/results` pages that `isJobDetailUrl()` then rejected. Added a dedicated LinkedIn pass for the highest-intent (goal) term. No new search queries beyond the goal term — total stays within the 15-query cap, so search-provider cost is unchanged. No LinkedIn login or scraping — public indexed postings only.
+
+---
+
 ## [1.2.0] — 2026-05-15
 
 ### Added
