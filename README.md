@@ -2,14 +2,13 @@
 
 <div align="center">
 
-**AI-powered autonomous job search and application system.**  
-**Runs entirely on localhost. No cloud. No subscriptions.**
+**AI-powered autonomous job search and application system.**
+**No subscription. No cloud. No vendor lock-in. Bring your own API key.**
 
 [![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org)
 [![Claude](https://img.shields.io/badge/Claude_Sonnet-000?style=flat&logo=anthropic&logoColor=white)](https://anthropic.com)
 [![Tavily](https://img.shields.io/badge/Tavily-FF6B35?style=flat&logoColor=white)](https://tavily.com)
 [![License](https://img.shields.io/badge/License-OrbitumAI_Free-blue.svg)](LICENSE)
-[![ORBIT Framework](https://img.shields.io/badge/Powered_by-ORBIT_Framework-orange?style=flat)](https://orbitumai.com)
 [![Discord](https://img.shields.io/badge/Discord-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/ZamMu766Q)
 
 ![OrbitApply Hero Banner](docs/hero-banner.svg)
@@ -20,11 +19,11 @@
 
 ---
 
-> *I ran a $50M global payroll transformation across 51 countries and 24 vendors.*  
-> *Then I sat on the candidate side of the table.*  
-> *The process was broken. So I built the system I wish existed.*  
-> *Shipped entirely through prompt engineering. No traditional code.*  
-> *Now it's open source.*  
+> *I ran a $50M global payroll transformation across 51 countries and 24 vendors.*
+> *Then I sat on the candidate side of the table.*
+> *The process was broken. So I built the system I wish existed.*
+> *Shipped entirely through prompt engineering. No traditional code.*
+> *Now it's open source.*
 >
 > — **Shuv Chowdhury**, Founder, OrbitumAI | Former Fortune 500 Enterprise Strategist
 
@@ -32,17 +31,37 @@
 
 ## What Is OrbitApply
 
-OrbitApply is a fleet of 8 AI agents that autonomously find jobs, research companies, tailor your resume and cover letter for each role, and track every application through the full pipeline — from first apply to offer.
+OrbitApply is a fleet of 7 AI agents that autonomously find jobs, research companies, tailor your resume and cover letter for each role, and track every application through the full pipeline — from first apply to offer.
 
 One click on the dashboard triggers the full pipeline:
 
 ```
-SCOUT → RECON → TAILOR → GUARDIAN → LEDGER → COACH
+ORBI → SCOUT → RECON → GUARDIAN → TAILOR → LEDGER → COACH
 ```
 
 Everything runs at `http://localhost:3000`. Your data never leaves your machine.
 
-> **This is NOT a spray-and-pray tool.** OrbitApply uses the ORBIT Framework to position you strategically for each role. Quality over volume. Every document produced is tailored, ATS-optimized, and executive-grade.
+> **This is NOT a spray-and-pray tool.** OrbitApply positions you strategically for each role. Quality over volume. Every document produced is tailored, ATS-optimized, and executive-grade.
+
+---
+
+## What It Costs
+
+**The software is free. You pay only your AI provider — directly, at their rates, with no markup.**
+
+| What | Cost |
+|---|---|
+| OrbitApply software | Free — open source, self-hosted |
+| Job discovery (SCOUT) | **$0** — pure JavaScript, no AI calls |
+| Company intelligence (RECON) | ~$0.05–$0.10 per company (Claude Haiku) |
+| Resume + cover letter (TAILOR) | ~$0.08–$0.15 per job (Claude Sonnet) |
+| Interview prep (COACH) | ~$0.05–$0.10 per prep pack (Claude Sonnet) |
+| **Full run — 5 jobs** | **~$0.40–$0.80 total** |
+| Daily hard cap (default) | $5.00 — enforced by GUARDIAN, not a billing limit |
+
+You connect your own [Anthropic API key](https://console.anthropic.com). OrbitApply never touches your billing. There is no SaaS tier, no pro plan, no usage-based pricing charged by us. Every dollar goes directly to Anthropic.
+
+**No API key at all?** SCOUT still runs — DuckDuckGo search requires zero keys. You only need an Anthropic key for RECON, TAILOR, and COACH.
 
 ---
 
@@ -61,6 +80,9 @@ Everything runs at `http://localhost:3000`. Your data never leaves your machine.
 
 ## How the Pipeline Works
 
+### ORBI — Master Orchestrator (Claude Sonnet)
+Coordinates the full agent pipeline. Routes jobs through each stage, manages context, enforces sequencing, and surfaces results to the dashboard in real time.
+
 ### SCOUT — Job Discovery (No AI cost)
 Runs 15 parallel searches across 40+ job sites using a waterfall of 7 search providers (Tavily → Brave → SerpAPI → Bing → Google → Jina → DuckDuckGo). Scores every result locally in pure JavaScript — zero AI cost at this stage. Resolves the employer name from title patterns, snippet text, and company-owned career hosts, and filters out aggregator search/browse pages — no AI required.
 
@@ -75,17 +97,17 @@ Runs 15 parallel searches across 40+ job sites using a waterfall of 7 search pro
 ### RECON — Company Intelligence (Claude Haiku)
 For each qualified job, RECON builds a structured intelligence profile: culture signals, salary benchmarks, funding stage, tech stack, red flags, opportunity score, and risk score.
 
+### GUARDIAN — Safety Layer (No AI)
+Runs before every TAILOR action. Enforces daily budget cap ($5), apply limits (15/day), blacklist, and protected contacts. No agent can bypass GUARDIAN.
+
 ### TAILOR — Document Generation (Claude Sonnet)
 For every job scoring 60+, TAILOR runs two sequential Claude Sonnet calls:
 
-**Resume tailoring** — rewrites bullet points to mirror JD language, injects ATS keywords, applies ORBIT Framework positioning in the summary, and is **industry-aware** (infers the target industry from the job and your `targetIndustries`). Runs an internal ATS simulation targeting 75+/100.
+**Resume tailoring** — rewrites bullet points to mirror JD language, injects ATS keywords, applies strategic outcome-focused positioning in the summary, and is **industry-aware** (infers the target industry from the job and your `targetIndustries`). Runs an internal ATS simulation targeting 75+/100.
 
-**Cover letter writing** — strict ORBIT structure (Outcome → Revenue Lever → Bottleneck → Implement → Track). 250–320 words. Executive tone. No filler phrases. Ever.
+**Cover letter writing** — executive-structured, results-first format. 250–320 words. Leads with the specific outcome you deliver, quantifies your revenue impact, identifies the bottleneck you solve, outlines your 30-60-90 day approach, and closes with tracked achievements. Executive tone. No filler phrases. Ever.
 
 **PDF output** — both documents are rendered as polished A4 **PDFs** (header band, section rules, two-column competencies, smart page breaks, page numbers) and saved to `Apply/applications/<Company> - <Title>/`. Falls back to `.txt` if PDF generation fails.
-
-### GUARDIAN — Safety Layer (No AI)
-Runs before every TAILOR and SUBMIT action. Enforces daily budget cap ($5), apply limits (15/day), blacklist, protected contacts, and human review queue for sensitive form fields.
 
 ### LEDGER — Pipeline Tracker (No AI)
 Registers every application with full metadata, status tracking, follow-up reminders, and budget accounting.
@@ -93,23 +115,7 @@ Registers every application with full metadata, status tracking, follow-up remin
 ### COACH — Interview Prep (Claude Sonnet)
 Auto-triggers when you update an application to Phone Screen or Interview stage — **or run it on demand** from the Pipeline application modal (**Generate / Refresh** and **View Prep Pack** buttons). Generates a full prep pack: 10 behavioral questions with STAR templates, salary negotiation script anchored 15–20% above market, and recent news items to reference naturally.
 
-The technical/domain section is grounded in a built-in **GenAI interview question bank** (`src/data/genaiInterviewBank.js`) — 32 vetted questions across 9 categories (LLM fundamentals, RAG, agents, fine-tuning, prompt/context engineering, evaluation, governance, production/cost, AI strategy & leadership), automatically weighted to the role's seniority and grounded in your ORBIT profile.
-
----
-
-## The ORBIT Framework
-
-Every resume and cover letter OrbitApply generates follows the ORBIT Framework — proprietary IP developed by OrbitumAI:
-
-| Pillar | What It Answers |
-|---|---|
-| **O — Outcome** | What specific result does this candidate deliver to THIS company? |
-| **R — Revenue Lever** | How does hiring them grow revenue or cut costs? |
-| **B — Bottleneck** | What problem do they solve RIGHT NOW? |
-| **I — Implement** | What is their 30-60-90 day plan? |
-| **T — Track** | What quantified achievements prove they can deliver? |
-
-This is what separates OrbitApply documents from every other AI resume tool. Not keyword stuffing. Strategic positioning.
+The technical/domain section is grounded in a built-in **GenAI interview question bank** (`src/data/genaiInterviewBank.js`) — 32 vetted questions across 9 categories (LLM fundamentals, RAG, agents, fine-tuning, prompt/context engineering, evaluation, governance, production/cost, AI strategy & leadership), automatically weighted to the role's seniority and your profile.
 
 ---
 
@@ -120,9 +126,8 @@ This is what separates OrbitApply documents from every other AI resume tool. Not
 | **ORBI** | Claude Sonnet | Master orchestrator |
 | **SCOUT** | No AI (pure JS) | Job discovery — 7 search providers, local scoring |
 | **RECON** | Claude Haiku | Company intelligence |
+| **GUARDIAN** | No AI (pure JS) | Safety: budget, rate limits, blacklist |
 | **TAILOR** | Claude Sonnet | Resume + cover letter generation |
-| **GUARDIAN** | No AI (pure JS) | Safety: budget, rate limits, blacklist, human queue |
-| **SUBMIT** | Claude Haiku | Playwright form fill (optional — off by default, requires `npx playwright install chromium`) |
 | **LEDGER** | No AI (pure JS) | Pipeline tracker |
 | **COACH** | Claude Sonnet | Interview prep — auto-triggered on stage change or on demand; grounded in a GenAI question bank |
 
@@ -153,8 +158,6 @@ OrbitApply works even without a paid Tavily subscription. It automatically falls
 - Anthropic API key — [console.anthropic.com](https://console.anthropic.com)
 - At least one search provider key (or use DuckDuckGo — no key needed)
 
-> **Playwright is optional.** It is only required if you enable `autoSubmit: true` in `orbitapply.json`. Most users never need it — OrbitApply generates your tailored documents and you submit manually. This keeps the default install fast and lightweight.
-
 ### Install
 
 ```bash
@@ -164,9 +167,6 @@ cd Orbitapply
 
 # Install dependencies
 pnpm install
-
-# Optional — only needed if you want auto-submit (off by default)
-# npx playwright install chromium
 
 # Set up environment
 cp .env.example .env
@@ -229,14 +229,15 @@ OrbitApply lets you control search quality from the **Profile Setup UI** — no 
 
 ## Budget & Safety
 
+GUARDIAN enforces hard limits on every run — no agent can bypass them.
+
 | Control | Default | Where to Change |
 |---|---|---|
 | Daily budget cap | $5.00 | `orbitapply.json` → `budget.dailyLimitUSD` |
 | Max applications/day | 15 | `orbitapply.json` → `guardian.maxAppliesPerDay` |
-| Rate limit between submits | 45 seconds | `orbitapply.json` → `guardian.rateLimitMs` |
-| Auto-submit | OFF | `orbitapply.json` → `submit.autoSubmit` |
+| Rate limit between applications | 45 seconds | `orbitapply.json` → `guardian.rateLimitMs` |
 
-**Approximate cost per full run (SCOUT + RECON + TAILOR for 5 jobs): $0.40–$0.80**
+The daily cap is a safeguard against runaway AI spend — not a platform charge. You will never be billed by OrbitApply.
 
 ---
 
@@ -321,7 +322,6 @@ Join the community on [Discord](https://discord.gg/ZamMu766Q) — get help, shar
 [![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-000?style=flat&logo=express&logoColor=white)](https://expressjs.com)
 [![Tavily](https://img.shields.io/badge/Tavily-FF6B35?style=flat)](https://tavily.com)
-[![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=flat&logo=playwright&logoColor=white)](https://playwright.dev) *(optional — auto-submit only)*
 
 ---
 
@@ -345,4 +345,4 @@ OrbitumAI Free License — free to use, modify, and distribute for personal and 
 
 ---
 
-*OrbitApply is part of the OrbitumAI open source suite. Built with the ORBIT Framework.*
+*OrbitApply is part of the OrbitumAI open source suite.*

@@ -4,6 +4,16 @@ All notable changes to OrbitApply are documented here.
 
 ---
 
+## [1.3.0] — 2026-05-21
+
+### Removed
+- **SUBMIT agent** — `src/services/submit.js` and `src/routes/submit.js` removed. Playwright-based auto-form-fill is no longer part of the pipeline. Users continue to apply manually after reviewing generated documents.
+- **Auto-Apply feature** — `src/services/autoapply/` directory (`autoApply.js`, `eligibility.js`) and `src/routes/autoApply.js` removed. Autonomous apply logic has been extracted from the pipeline.
+- **Human Queue** — `src/routes/humanQueue.js` and the Human Queue UI view removed. GUARDIAN preflight continues to enforce budget caps, rate limits, blacklist, and protected contacts, but no longer routes flagged fields to a separate queue.
+- UI nav items and views for **Auto-Apply** and **Human Queue** removed from `ui/index.html` and `ui/js/app.js`.
+
+---
+
 ## [1.2.0] — 2026-05-15
 
 ### Added
@@ -35,7 +45,7 @@ All notable changes to OrbitApply are documented here.
 - `package.json` — description encoding error
 
 ### Improved
-- `agents/tailor/SOUL.md` — upgraded with strict ORBIT quality rules, banned phrases list, quality self-check, ATS scoring breakdown, and stricter cover letter structure
+- `agents/tailor/SOUL.md` — upgraded with strict quality rules, banned phrases list, quality self-check, ATS scoring breakdown, and stricter cover letter structure
 - `src/services/scout.js` — now imports domains and platform resolver from `jobSites.js` config
 
 ---
@@ -46,7 +56,7 @@ All notable changes to OrbitApply are documented here.
 - ORBI — master orchestrator agent (Claude Sonnet)
 - SCOUT — job discovery via Tavily with local fit scoring (no AI cost)
 - RECON — company intelligence agent (Claude Haiku)
-- TAILOR — resume and cover letter generator using ORBIT Framework (Claude Sonnet)
+- TAILOR — resume and cover letter generator with strategic positioning (Claude Sonnet)
 - GUARDIAN — safety layer: budget caps, rate limits, blacklist, human queue
 - SUBMIT — Playwright-based form fill (off by default)
 - LEDGER — pipeline tracker with follow-up reminders

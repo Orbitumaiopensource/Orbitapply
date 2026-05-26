@@ -34,10 +34,18 @@ async function renderScout() {
         <button onclick="hideImportModal()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-muted);line-height:1">✕</button>
       </div>
       <div id="import-modal-alert" style="margin-bottom:12px"></div>
+      <div style="display:flex;gap:0;margin-bottom:18px;border-bottom:2px solid var(--border)">
+        <button id="import-tab-btn-url" onclick="switchImportTab('url')" style="flex:1;padding:8px 0;font-size:12px;font-weight:700;border:none;border-bottom:2px solid var(--accent);margin-bottom:-2px;background:transparent;cursor:pointer;color:var(--text-primary)">By URL</button>
+        <button id="import-tab-btn-doc" onclick="switchImportTab('doc')" style="flex:1;padding:8px 0;font-size:12px;font-weight:600;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;cursor:pointer;color:var(--text-muted)">Upload Word Doc</button>
+      </div>
       <div style="display:flex;flex-direction:column;gap:14px">
-        <div>
+        <div id="import-panel-url">
           <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">Job URL <span style="color:#EF4444">*</span></label>
           <input id="import-url" type="url" placeholder="https://jobs.lever.co/company/..." style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-primary);outline:none" />
+        </div>
+        <div id="import-panel-doc" style="display:none">
+          <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px">Word Document (.docx) <span style="color:#EF4444">*</span></label>
+          <input id="import-docx-file" type="file" accept=".docx" style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-primary);background:#fff;cursor:pointer" />
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div>
@@ -58,7 +66,7 @@ async function renderScout() {
         <button class="btn btn-secondary btn-sm" onclick="hideImportModal()" style="padding:8px 18px">Cancel</button>
         <button class="btn btn-primary btn-sm" id="import-submit-btn" onclick="submitImportJob()" style="padding:8px 20px">Import &amp; Score</button>
       </div>
-      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0">Title and company are auto-extracted from the URL if left blank. Fit score is computed against your profile.</p>
+      <p id="import-modal-hint" style="font-size:11px;color:var(--text-muted);margin:14px 0 0">Title and company are auto-extracted from the URL if left blank. Fit score is computed against your profile.</p>
     </div>
   `;
   await loadScoutResults();
@@ -371,13 +379,40 @@ function showImportModal() {
   const modal = el('import-modal');
   if (overlay) overlay.style.display = 'block';
   if (modal) modal.style.display = 'block';
+  switchImportTab('url');
   const urlInput = el('import-url');
   if (urlInput) { urlInput.value = ''; urlInput.focus(); }
   ['import-title', 'import-company', 'import-salary'].forEach(id => {
     const f = el(id); if (f) f.value = '';
   });
+  const fileInput = el('import-docx-file');
+  if (fileInput) fileInput.value = '';
   const alertDiv = el('import-modal-alert');
   if (alertDiv) alertDiv.innerHTML = '';
+}
+
+function switchImportTab(tab) {
+  const isUrl = tab === 'url';
+  const panelUrl = el('import-panel-url');
+  const panelDoc = el('import-panel-doc');
+  const btnUrl = el('import-tab-btn-url');
+  const btnDoc = el('import-tab-btn-doc');
+  const hint = el('import-modal-hint');
+  if (panelUrl) panelUrl.style.display = isUrl ? 'block' : 'none';
+  if (panelDoc) panelDoc.style.display = isUrl ? 'none' : 'block';
+  if (btnUrl) {
+    btnUrl.style.borderBottomColor = isUrl ? 'var(--accent)' : 'transparent';
+    btnUrl.style.color = isUrl ? 'var(--text-primary)' : 'var(--text-muted)';
+    btnUrl.style.fontWeight = isUrl ? '700' : '600';
+  }
+  if (btnDoc) {
+    btnDoc.style.borderBottomColor = isUrl ? 'transparent' : 'var(--accent)';
+    btnDoc.style.color = isUrl ? 'var(--text-muted)' : 'var(--text-primary)';
+    btnDoc.style.fontWeight = isUrl ? '600' : '700';
+  }
+  if (hint) hint.textContent = isUrl
+    ? 'Title and company are auto-extracted from the URL if left blank. Fit score is computed against your profile.'
+    : 'Text is extracted from the .docx file. Add title and company if not in the document.';
 }
 
 function hideImportModal() {
@@ -388,26 +423,44 @@ function hideImportModal() {
 }
 
 async function submitImportJob() {
-  const urlInput = el('import-url');
-  const url = (urlInput?.value || '').trim();
   const alertDiv = el('import-modal-alert');
   const btn = el('import-submit-btn');
-
-  if (!url) {
-    if (alertDiv) alertDiv.innerHTML = `<div style="font-size:12px;color:#EF4444;padding:8px 12px;background:#FEF2F2;border-radius:6px">Please enter a job URL.</div>`;
-    return;
-  }
+  const isDocMode = el('import-panel-doc')?.style.display !== 'none';
 
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Importing...'; }
   if (alertDiv) alertDiv.innerHTML = '';
 
   try {
-    const result = await API.post('/api/v1/scout/import', {
-      url,
-      title: el('import-title')?.value?.trim() || '',
-      company: el('import-company')?.value?.trim() || '',
-      salary: el('import-salary')?.value?.trim() || '',
-    });
+    let result;
+
+    if (isDocMode) {
+      const fileInput = el('import-docx-file');
+      const file = fileInput?.files?.[0];
+      if (!file) {
+        if (alertDiv) alertDiv.innerHTML = `<div style="font-size:12px;color:#EF4444;padding:8px 12px;background:#FEF2F2;border-radius:6px">Please select a .docx file.</div>`;
+        return;
+      }
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('title', el('import-title')?.value?.trim() || '');
+      fd.append('company', el('import-company')?.value?.trim() || '');
+      fd.append('salary', el('import-salary')?.value?.trim() || '');
+      const r = await fetch('/api/v1/scout/import-docx', { method: 'POST', body: fd });
+      result = await r.json();
+      if (!r.ok) throw new Error(result.error || `Request failed (${r.status})`);
+    } else {
+      const url = (el('import-url')?.value || '').trim();
+      if (!url) {
+        if (alertDiv) alertDiv.innerHTML = `<div style="font-size:12px;color:#EF4444;padding:8px 12px;background:#FEF2F2;border-radius:6px">Please enter a job URL.</div>`;
+        return;
+      }
+      result = await API.post('/api/v1/scout/import', {
+        url,
+        title: el('import-title')?.value?.trim() || '',
+        company: el('import-company')?.value?.trim() || '',
+        salary: el('import-salary')?.value?.trim() || '',
+      });
+    }
 
     if (result.error) {
       if (alertDiv) alertDiv.innerHTML = `<div style="font-size:12px;color:#EF4444;padding:8px 12px;background:#FEF2F2;border-radius:6px">${escapeHtml(result.error)}</div>`;

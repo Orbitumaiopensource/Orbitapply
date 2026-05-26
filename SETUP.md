@@ -184,4 +184,4 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ---
 
-Built with the ORBIT Framework by [OrbitumAI](https://orbitumai.com)
+Built by [OrbitumAI](https://orbitumai.com)

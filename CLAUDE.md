@@ -10,13 +10,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `pnpm test` — Jest (`--passWithNoTests`; there is currently no test suite)
 - `pnpm test -- <pattern>` — run a single test file/pattern once tests exist
 - `pnpm coverage` — Jest with coverage
-- `npx playwright install chromium` — only needed if `orbitapply.json` → `submit.autoSubmit` is `true` (off by default)
-
 There is no build step or linter configured. Node v18+ required.
 
 ## Architecture
 
-OrbitApply is a single-user, **localhost-only** Express app (`index.js`) that orchestrates 8 AI agents into a job-search pipeline. The server binds to `127.0.0.1` only — never change `HOST` to `0.0.0.0` or expose it publicly.
+OrbitApply is a single-user, **localhost-only** Express app (`index.js`) that orchestrates 7 AI agents into a job-search pipeline. The server binds to `127.0.0.1` only — never change `HOST` to `0.0.0.0` or expose it publicly.
 
 ### Request flow
 `index.js` mounts all routes under `/api/v1/*` and serves the static UI from `ui/` (SPA fallback to `ui/index.html` for non-`/api` paths). Routes (`src/routes/`) are thin HTTP layers; all real logic lives in `src/services/`. One service file per agent, mirrored by a `SOUL.md` and (for most) a route — see the table in `AGENTS.md`, which is the authoritative agent map.
@@ -38,7 +36,7 @@ All AI agents go through `runAgent(agentId, userPrompt, sessionId, extraContext)
 - AI agents that return structured data rely on `parseJSONFromContent()` — the SOUL must instruct the model to emit a parseable JSON block.
 
 ### Configuration & state
-- `orbitapply.json` — runtime config: models, budget caps, GUARDIAN limits, scout thresholds, workspace paths, submit settings. Read at runtime via `readJSON`; not all keys are mirrored in `constants.js` (e.g. expanded `guardian.humanPauseFields`).
+- `orbitapply.json` — runtime config: models, budget caps, GUARDIAN limits, scout thresholds, workspace paths. Read at runtime via `readJSON`; not all keys are mirrored in `constants.js` (e.g. expanded `guardian.humanPauseFields`).
 - `src/utils/constants.js` — hardcoded defaults/thresholds (budget $5/day, 15 applies/day, 45s rate limit, score minimums, pipeline stages).
 - `src/config/jobSites.js` — single source of all job sources. Add a site here (one line); do not hardcode sites in `scout.js`.
 - `src/utils/searchProvider.js` — 7-provider waterfall (Tavily → Brave → SerpAPI → Bing → Google → Jina → DuckDuckGo). Fallback order is intentional; DuckDuckGo needs no key.
@@ -56,7 +54,6 @@ These come from `AGENTS.md` and `.cursorrules` (note: `.cursorrules` describes a
 - pnpm exclusively — never `npm` or `yarn`. Do not add dependencies without being asked.
 - All external API calls go through `src/services/` — never inline in routes or UI. Wrap in try/catch; log the real error, surface a generic message to the client (never raw API errors/stack traces/status codes to the frontend).
 - Never modify `agents/guardian/SOUL.md` safety rules.
-- Never set `submit.autoSubmit: true` without explicit user confirmation.
 - TAILOR renders PDFs via `pdfkit`; keep the `.txt` fallback path intact.
 - Ask before: paid external API calls, modifying `.env`/config, installing deps, anything that would expose the app beyond localhost.
 - `src/services/tailor.js.backup` is a stale backup — ignore it; edit `tailor.js`.

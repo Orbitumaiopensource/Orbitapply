@@ -55,10 +55,6 @@ async function renderDashboard() {
         </div>
         <div id="run-result" style="display:none;margin-top:16px"></div>
       </div>
-      <div class="card">
-        <div class="section-label">ORBIT Agent Status</div>
-        <div id="agent-status-list"></div>
-      </div>
     </div>
     <div id="run-history-section" style="margin-top:24px"></div>
   `;
@@ -303,40 +299,7 @@ const AGENTS = [
   { id: 'guardian', label: 'GUARDIAN', role: 'Safety Layer', model: 'Haiku 4.5' },
 ];
 
-function renderAgentStatus(runStatus) {
-  const list = el('agent-status-list');
-  if (!list) return;
-
-  const activeStep = runStatus?.step || '';
-  const isRunning = runStatus?.running;
-
-  // Build the full list only once; after that just swap badge text in-place
-  if (!list.dataset.built) {
-    list.innerHTML = AGENTS.map(agent => `
-      <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)" id="agent-row-${agent.id}">
-        <div style="width:36px;height:36px;background:var(--bg-accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent-dark);flex-shrink:0">${agent.label}</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600">${agent.label}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${agent.role} · ${agent.model}</div>
-        </div>
-        <span id="agent-badge-${agent.id}" class="badge badge-gray badge-dot">Idle</span>
-      </div>`).join('');
-    list.dataset.built = '1';
-  }
-
-  AGENTS.forEach(agent => {
-    const badge = el(`agent-badge-${agent.id}`);
-    if (!badge) return;
-    const isActive = isRunning && activeStep.toLowerCase().includes(agent.id);
-    if (isActive) {
-      badge.className = 'badge badge-yellow badge-dot yellow';
-      badge.textContent = 'Active';
-    } else {
-      badge.className = 'badge badge-gray badge-dot';
-      badge.textContent = 'Idle';
-    }
-  });
-}
+function renderAgentStatus() {}
 
 function renderRunProgress(runStatus) {
   if (!runStatus) return;

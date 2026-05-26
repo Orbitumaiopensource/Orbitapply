@@ -3,8 +3,6 @@ const VIEWS = {
   profile: renderProfile,
   scout: renderScout,
   pipeline: renderPipeline,
-  autoApply: renderAutoApply,
-  humanQueue: renderHumanQueue,
   sessions: renderSessions,
   config: renderConfig,
 };

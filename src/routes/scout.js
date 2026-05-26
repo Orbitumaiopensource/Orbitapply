@@ -1,7 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const mammoth = require('mammoth');
 const { logger } = require('../utils/logger');
 const scoutService = require('../services/scout');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 router.get('/results', (req, res) => {
   try {
@@ -55,6 +59,23 @@ router.post('/import', async (req, res) => {
   } catch (err) {
     logger.error(`POST /scout/import failed: ${err.message}`, err);
     res.status(500).json({ error: 'Failed to import job.' });
+  }
+});
+
+router.post('/import-docx', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
+    if (!/\.docx$/i.test(req.file.originalname)) {
+      return res.status(400).json({ error: 'Only .docx files are supported.' });
+    }
+    const { value: jdText } = await mammoth.extractRawText({ buffer: req.file.buffer });
+    const { title = '', company = '', salary = '' } = req.body;
+    const result = await scoutService.importJobFromDoc({ title, company, salary, jdText });
+    if (result.error) return res.status(400).json(result);
+    res.json(result);
+  } catch (err) {
+    logger.error(`POST /scout/import-docx failed: ${err.message}`, err);
+    res.status(500).json({ error: 'Failed to import job from document.' });
   }
 });
 

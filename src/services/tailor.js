@@ -555,6 +555,12 @@ RULES:
     jobDescPdfPath = jdFallback;
   }
 
+  // Always save editable plain-text copies so the UI can load/edit them
+  const resumeEditPath = path.join(appFolder, 'resume_edit.txt');
+  const coverEditPath = path.join(appFolder, 'cover_edit.txt');
+  fs.writeFileSync(resumeEditPath, resumeText, 'utf8');
+  fs.writeFileSync(coverEditPath, coverLetter, 'utf8');
+
   writeJSON(jobPath, job);
   writeJSON(metaPath, {
     jobId: job.id,
@@ -572,6 +578,8 @@ RULES:
     resumePdfPath,
     coverPdfPath,
     jobDescPdfPath,
+    resumeEditPath,
+    coverEditPath,
   });
 
   logger.info(`[TAILOR] Package complete for ${job.company} - ${job.title} (ATS: ${tailoredResume?.atsScore || 'N/A'})`);
@@ -658,7 +666,58 @@ function docExistsForJob(jobId) {
   return false;
 }
 
+// ─── EDITABLE TEXT HELPERS ────────────────────────────────────────────────────
+function _findAppFolder(jobId) {
+  const appsRoot = getApplicationsRoot();
+  if (!fs.existsSync(appsRoot)) return null;
+  for (const folder of fs.readdirSync(appsRoot)) {
+    const metaPath = path.join(appsRoot, folder, 'metadata.json');
+    if (!fs.existsSync(metaPath)) continue;
+    const meta = readJSON(metaPath, {});
+    if (meta.jobId === jobId) return { folderPath: path.join(appsRoot, folder), meta };
+  }
+  return null;
+}
+
+function getDocumentText(jobId) {
+  const found = _findAppFolder(jobId);
+  if (!found) return { resume: null, cover: null };
+  const { folderPath, meta } = found;
+  const resumeEditPath = meta.resumeEditPath || path.join(folderPath, 'resume_edit.txt');
+  const coverEditPath = meta.coverEditPath || path.join(folderPath, 'cover_edit.txt');
+  return {
+    resume: fs.existsSync(resumeEditPath) ? fs.readFileSync(resumeEditPath, 'utf8') : null,
+    cover: fs.existsSync(coverEditPath) ? fs.readFileSync(coverEditPath, 'utf8') : null,
+    meta,
+  };
+}
+
+async function saveDocumentText(jobId, type, content) {
+  const found = _findAppFolder(jobId);
+  if (!found) throw new Error('Application folder not found.');
+  const { folderPath, meta } = found;
+
+  if (type === 'resume') {
+    const editPath = meta.resumeEditPath || path.join(folderPath, 'resume_edit.txt');
+    fs.writeFileSync(editPath, content, 'utf8');
+    if (meta.resumePdfPath && meta.resumePdfPath.endsWith('.pdf')) {
+      await buildResumePDF(content, meta.resumePdfPath);
+      logger.info(`[TAILOR] Resume PDF regenerated for jobId=${jobId}`);
+    }
+  } else if (type === 'cover') {
+    const editPath = meta.coverEditPath || path.join(folderPath, 'cover_edit.txt');
+    fs.writeFileSync(editPath, content, 'utf8');
+    if (meta.coverPdfPath && meta.coverPdfPath.endsWith('.pdf')) {
+      await buildCoverPDF(content, meta.coverPdfPath);
+      logger.info(`[TAILOR] Cover PDF regenerated for jobId=${jobId}`);
+    }
+  } else {
+    throw new Error(`Unknown document type: ${type}`);
+  }
+}
+
 module.exports = {
   runTailor, getDocuments, getAllApplications, docExistsForJob,
   getApplicationsRoot, buildResumePDF, buildCoverPDF,
+  getDocumentText, saveDocumentText,
 };

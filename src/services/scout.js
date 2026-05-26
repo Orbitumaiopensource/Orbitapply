@@ -596,6 +596,65 @@ async function importJob({ url, title = '', company = '', salary = '' }) {
   return newJob;
 }
 
+async function importJobFromDoc({ title = '', company = '', salary = '', jdText = '' }) {
+  if (!jdText || jdText.trim().length < 50) {
+    return { error: 'Document appears to be empty or too short to score.' };
+  }
+
+  const profile = readJSON(PROFILE_PATH, {});
+  const snippet = jdText.slice(0, 400);
+  const fullText = jdText.toLowerCase();
+
+  const firstLine = jdText.split('\n').find(l => l.trim().length > 3)?.slice(0, 80) || 'Unknown Role';
+  const resolvedCompany = company.trim() || extractCompanyFromSnippet(snippet);
+  const resolvedTitle = title.trim() || extractJobTitle(firstLine, resolvedCompany);
+  const jobSalary = salary.trim() || extractSalary(jdText.slice(0, 1000));
+  const location = extractLocation(jdText.slice(0, 800), resolvedTitle);
+
+  const breakdown = scoreFit(resolvedTitle, location, jobSalary || null, fullText, profile);
+  const fitScore = Object.values(breakdown).reduce((a, b) => a + b, 0);
+
+  const today = new Date().toISOString().split('T')[0];
+  const ws = getScoutWorkspace();
+  const outPath = path.join(ws, `results-${today}.json`);
+
+  if (!fs.existsSync(ws)) fs.mkdirSync(ws, { recursive: true });
+
+  const data = readJSON(outPath, {
+    agentId: 'scout',
+    runDate: today,
+    runTime: new Date().toISOString(),
+    totalFound: 0,
+    qualified: 0,
+    results: [],
+  });
+
+  const newJob = {
+    id: `scout-imp-doc-${Date.now()}`,
+    title: resolvedTitle,
+    company: resolvedCompany,
+    location,
+    url: '',
+    platform: 'document',
+    salary: jobSalary || null,
+    fitScore,
+    fitBreakdown: breakdown,
+    snippet,
+    jdText,
+    postedAt: 'recent',
+    approved: false,
+    rejected: false,
+    manuallyImported: true,
+  };
+
+  data.results = [...(data.results || []), newJob].sort((a, b) => b.fitScore - a.fitScore);
+  data.qualified = data.results.filter(j => j.fitScore >= 70).length;
+  writeJSON(outPath, data);
+
+  logger.info(`[SCOUT] Imported from doc: "${resolvedTitle}" @ ${resolvedCompany} (fit: ${fitScore})`);
+  return newJob;
+}
+
 function getLatestResults() {
   const today = new Date().toISOString().split('T')[0];
   return readJSON(path.join(getScoutWorkspace(), `results-${today}.json`), null);
@@ -691,4 +750,4 @@ function rejectJob(jobId) {
   return job;
 }
 
-module.exports = { runScout, getLatestResults, getAllResults, getResultsByDate, buildCSV, approveJob, rejectJob, importJob, purgeExpiredJobs };
+module.exports = { runScout, getLatestResults, getAllResults, getResultsByDate, buildCSV, approveJob, rejectJob, importJob, importJobFromDoc, purgeExpiredJobs };

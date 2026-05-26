@@ -11,12 +11,9 @@ const profileRoutes = require('./src/routes/profile');
 const scoutRoutes = require('./src/routes/scout');
 const tailorRoutes = require('./src/routes/tailor');
 const budgetRoutes = require('./src/routes/budget');
-const humanQueueRoutes = require('./src/routes/humanQueue');
 const sessionsRoutes = require('./src/routes/sessions');
 const documentsRoutes = require('./src/routes/documents');
 const configRoutes = require('./src/routes/config');
-const submitRoutes = require('./src/routes/submit');
-const autoApplyRoutes = require('./src/routes/autoApply');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,12 +30,9 @@ app.use('/api/v1/profile', profileRoutes);
 app.use('/api/v1/scout', scoutRoutes);
 app.use('/api/v1/tailor', tailorRoutes);
 app.use('/api/v1/budget', budgetRoutes);
-app.use('/api/v1/human-queue', humanQueueRoutes);
 app.use('/api/v1/sessions', sessionsRoutes);
 app.use('/api/v1/documents', documentsRoutes);
 app.use('/api/v1/config', configRoutes);
-app.use('/api/v1/submit', submitRoutes);
-app.use('/api/v1/autoapply', autoApplyRoutes);
 
 app.use(express.static(path.join(__dirname, 'ui')));
 app.get('*', (req, res) => {

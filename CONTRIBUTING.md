@@ -1,6 +1,6 @@
 # Contributing to OrbitApply
 
-Thank you for your interest in contributing to OrbitApply — the open source AI job search system built on the ORBIT Framework.
+Thank you for your interest in contributing to OrbitApply — the open source AI job search and application system.
 
 ---
 
@@ -8,7 +8,7 @@ Thank you for your interest in contributing to OrbitApply — the open source AI
 
 - **Bug fixes** — fix issues listed in [GitHub Issues](https://github.com/Orbitumaiopensource/Orbitapply/issues)
 - **New job sites** — add sources to `src/config/jobSites.js`
-- **New ATS platforms** — extend SUBMIT agent in `src/services/submit.js`
+- **New ATS platforms** — extend the pipeline for additional job board integrations
 - **Agent improvements** — upgrade SOUL.md files in `agents/`
 - **Documentation** — improve README, SETUP, or inline docs
 - **Tests** — add Jest tests in `src/tests/`
@@ -84,4 +84,4 @@ Open a GitHub Discussion or Issue — we respond to all of them.
 
 ---
 
-Built with the ORBIT Framework by [OrbitumAI](https://orbitumai.com)
+Built by [OrbitumAI](https://orbitumai.com)
