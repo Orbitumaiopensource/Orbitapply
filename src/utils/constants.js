@@ -19,8 +19,8 @@ const MAX_APPLIES_PER_DAY = 15;
 const RATE_LIMIT_MS = 45000;
 const MAX_RETRIES = 3;
 
-const FIT_SCORE_MIN = 60;   // jobs at/above this are "qualified" → RECON + TAILOR
-const TAILOR_SCORE_MIN = 60;
+const FIT_SCORE_MIN = 50;   // jobs at/above this are "qualified" → RECON + TAILOR
+const TAILOR_SCORE_MIN = 50;
 
 // Per-run caps so a single "Run Job Search" doesn't grind through every
 // qualified job (each TAILOR job = 2 sequential Sonnet calls, ~40s).

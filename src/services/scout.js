@@ -375,7 +375,7 @@ function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
   const goalMatchesTitle = goal && goal.trim().split(/\s+/).filter(w => w.length > 2)
     .every(w => jobLower.includes(w.toLowerCase()));
 
-  if (!hasSeniority && !goalMatchesTitle) titleMatch = Math.min(titleMatch, 20);
+  if (!hasSeniority && !goalMatchesTitle) titleMatch = Math.min(titleMatch, 28);
 
   let locationMatch = 0;
   const locLower = (location || '').toLowerCase();
