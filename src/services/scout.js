@@ -6,6 +6,7 @@ const { logger } = require('../utils/logger');
 const { SEARCH_DOMAINS, getPlatformFromUrl } = require('../config/jobSites');
 const { waterfallSearch, waterfallExtract } = require('../utils/searchProvider');
 const { FIT_SCORE_MIN } = require('../utils/constants');
+const { scanPortals } = require('./portalScan');
 
 const PROFILE_PATH = path.join(__dirname, '..', '..', 'memory', 'profile.json');
 const DEFAULT_WORKSPACE = path.join(__dirname, '..', '..', 'workspace-scout');
@@ -481,11 +482,18 @@ async function runScout(goal = '') {
   const queries = buildSearchQueries(profile, goal);
   const rawResults = [];
 
-  logger.info(`[SCOUT] Running ${queries.length} searches in parallel (waterfall provider)`);
-  const searchBatches = await Promise.allSettled(queries.map(({ query, depth }) => {
-    logger.info(`[SCOUT] Searching [${depth}]: "${query}"`);
-    return waterfallSearch(query, depth, SEARCH_DOMAINS);
-  }));
+  // Run web searches and direct portal scan in parallel
+  logger.info(`[SCOUT] Running ${queries.length} web searches + direct portal scan in parallel`);
+  const [searchBatches, portalResults] = await Promise.all([
+    Promise.allSettled(queries.map(({ query, depth }) => {
+      logger.info(`[SCOUT] Searching [${depth}]: "${query}"`);
+      return waterfallSearch(query, depth, SEARCH_DOMAINS);
+    })),
+    scanPortals(profile.targetRoles || [], goal).catch(err => {
+      logger.warn(`[SCOUT] Portal scan failed: ${err.message}`);
+      return [];
+    }),
+  ]);
 
   for (const batch of searchBatches) {
     if (batch.status !== 'fulfilled') continue;
@@ -494,7 +502,12 @@ async function runScout(goal = '') {
     }
   }
 
-  logger.info(`[SCOUT] ${rawResults.length} raw results — scoring locally`);
+  // Portal results are already individual job URLs — add directly
+  for (const r of portalResults) {
+    if (r.url && isJobDetailUrl(r.url)) rawResults.push(r);
+  }
+
+  logger.info(`[SCOUT] ${rawResults.length} raw results (web + portal) — scoring locally`);
 
   const scored = filterScoutResults(extractAndScoreJobs(rawResults, profile, goal));
 
