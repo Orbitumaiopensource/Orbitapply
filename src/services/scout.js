@@ -11,7 +11,7 @@ const PROFILE_PATH = path.join(__dirname, '..', '..', 'memory', 'profile.json');
 const DEFAULT_WORKSPACE = path.join(__dirname, '..', '..', 'workspace-scout');
 const CONFIG_PATH = path.join(__dirname, '..', '..', 'orbitapply.json');
 
-const MIN_DISPLAY_SCORE = 40;
+const MIN_DISPLAY_SCORE = 30;
 const MAX_RESULTS_PER_QUERY = 15;
 
 const EXPIRED_JOB_PHRASES = [
@@ -424,8 +424,9 @@ function extractAndScoreJobs(rawResults, profile, goal = '') {
   const seen = new Set();
   const jobs = [];
 
-  // Use profile-defined min score or fall back to default
-  const minScore = profile.minFitScore ?? MIN_DISPLAY_SCORE;
+  // Use profile-defined min score → orbitapply.json scout.minDisplayScore → hardcoded default
+  const cfg = readJSON(CONFIG_PATH, {});
+  const minScore = profile.minFitScore ?? cfg?.scout?.minDisplayScore ?? MIN_DISPLAY_SCORE;
 
   rawResults.forEach((r) => {
     if (seen.has(r.url)) return;
@@ -467,7 +468,7 @@ function extractAndScoreJobs(rawResults, profile, goal = '') {
     });
   });
 
-  return jobs.sort((a, b) => b.fitScore - a.fitScore).slice(0, 20);
+  return jobs.sort((a, b) => b.fitScore - a.fitScore).slice(0, 50);
 }
 
 async function runScout(goal = '') {

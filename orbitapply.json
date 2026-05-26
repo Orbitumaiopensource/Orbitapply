@@ -1,5 +1,28 @@
 {
-  "version": "1.0.0",
+  "budget": {
+    "dailyLimitUSD": 5,
+    "alertAtUSD": 4,
+    "hardStop": true
+  },
+  "guardian": {
+    "maxAppliesPerDay": 15,
+    "rateLimitMs": 45000,
+    "humanPauseFields": [
+      "salary",
+      "diversity",
+      "custom_essay",
+      "security_clearance",
+      "disability",
+      "gender",
+      "race",
+      "ethnicity",
+      "veteran",
+      "signature",
+      "certify",
+      "attestation"
+    ]
+  },
+  "outputFolder": "./Apply",
   "agents": {
     "defaults": {
       "model": "claude-haiku-4-5-20251001",
@@ -21,74 +44,9 @@
     }
   },
   "scout": {
-    "minDisplayScore": 50,
+    "minDisplayScore": 30,
     "minQualifiedScore": 70,
     "maxQueries": 15,
     "maxResultsPerQuery": 15
-  },
-  "run": {
-    "autoTailor": false,
-    "maxReconPerRun": 8,
-    "maxTailorPerRun": 8
-  },
-  "budget": {
-    "dailyLimitUSD": 5,
-    "hardStop": true,
-    "alertAtUSD": 3
-  },
-  "guardian": {
-    "maxAppliesPerDay": 15,
-    "humanPauseFields": [
-      "salary",
-      "diversity",
-      "custom_essay",
-      "security_clearance",
-      "disability",
-      "gender",
-      "race",
-      "ethnicity",
-      "veteran",
-      "signature",
-      "certify",
-      "attestation"
-    ],
-    "rateLimitMs": 45000
-  },
-  "sessions": {
-    "storePath": "./sessions/sessions.json"
-  },
-  "memory": {
-    "profilePath": "./memory/profile.json",
-    "protectedPath": "./memory/protected.json",
-    "blacklistPath": "./memory/blacklist.json"
-  },
-  "credentials": {
-    "authProfilesPath": "./credentials/auth-profiles.json"
-  },
-  "logs": {
-    "path": "./logs/run.log",
-    "level": "info"
-  },
-  "workspaces": {
-    "scout": "./workspace-scout",
-    "recon": "./workspace-recon",
-    "tailor": "./workspace-tailor",
-    "submit": "./workspace-submit",
-    "ledger": "./workspace-ledger",
-    "coach": "./workspace-coach"
-  },
-  "outputFolder": "./Apply",
-  "submit": {
-    "autoSubmit": false,
-    "headless": true,
-    "screenshotOnEachPage": true,
-    "maxSubmitRetries": 1,
-    "unsupportedPlatforms": ["workday", "icims"]
-  },
-  "autoApply": {
-    "enabled": true,
-    "defaultAutoSubmit": false,
-    "supportedPlatforms": ["greenhouse", "lever", "ashby"],
-    "workspace": "./workspace-autoapply"
   }
 }
