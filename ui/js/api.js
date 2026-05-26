@@ -23,6 +23,12 @@ const API = {
     if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`);
     return j;
   },
+  async delete(path, body = {}) {
+    const r = await fetch(path, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`);
+    return j;
+  },
 };
 
 function el(id) { return document.getElementById(id); }

@@ -14,6 +14,7 @@ const budgetRoutes = require('./src/routes/budget');
 const sessionsRoutes = require('./src/routes/sessions');
 const documentsRoutes = require('./src/routes/documents');
 const configRoutes = require('./src/routes/config');
+const dataRoutes = require('./src/routes/data');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,6 +34,7 @@ app.use('/api/v1/budget', budgetRoutes);
 app.use('/api/v1/sessions', sessionsRoutes);
 app.use('/api/v1/documents', documentsRoutes);
 app.use('/api/v1/config', configRoutes);
+app.use('/api/v1/data', dataRoutes);
 
 app.use(express.static(path.join(__dirname, 'ui')));
 app.get('*', (req, res) => {
