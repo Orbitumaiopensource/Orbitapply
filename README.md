@@ -1,9 +1,12 @@
 # OrbitApply
 
-<div align="center">
+**AI-powered autonomous job search and application system — runs entirely on your local machine.**
 
-**AI-powered autonomous job search and application system.**
-**No subscription. No cloud. No vendor lock-in. Bring your own API key.**
+OrbitApply uses a coordinated fleet of AI agents to find matching jobs, research companies, tailor your resume and cover letter for each role, and track every application through the full pipeline — from first apply to offer. Everything runs on `localhost:3000`. No cloud. No subscriptions. No data leaves your machine.
+
+> **Free. Open source. Built for anyone looking for a job or preparing for an interview.**
+
+<div align="center">
 
 [![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org)
 [![Claude](https://img.shields.io/badge/Claude_Sonnet-000?style=flat&logo=anthropic&logoColor=white)](https://anthropic.com)
@@ -19,49 +22,36 @@
 
 ---
 
-> *I ran a $50M global payroll transformation across 51 countries and 24 vendors.*
-> *Then I sat on the candidate side of the table.*
-> *The process was broken. So I built the system I wish existed.*
-> *Shipped entirely through prompt engineering. No traditional code.*
-> *Now it's open source.*
->
-> — **Shuv Chowdhury**, Founder, OrbitumAI | Former Fortune 500 Enterprise Strategist
+## Why I built this
 
----
+I spent the better part of 20 years running large transformation programs — change management, system overhauls, multi-country rollouts. That was my world for a long time.
 
-## What Is OrbitApply
+Then I decided it was time to transform myself.
 
-OrbitApply is a fleet of 7 AI agents that autonomously find jobs, research companies, tailor your resume and cover letter for each role, and track every application through the full pipeline — from first apply to offer.
+That journey wasn't easy. I left a familiar identity and walked into a lot of unknowns. Over the last two years I spent **2,500+ hours learning AI** — building production-grade applications, agentic workflows, and automation systems entirely through prompt engineering. No traditional code. Just curiosity, persistence, and a belief that the tools had finally caught up to what was possible.
 
-One click on the dashboard triggers the full pipeline:
+Along the way, I watched a lot of people going through something I'd never had to think about before — the modern job search. And the more I looked, the clearer it was that the process was broken in ways that weren't the candidate's fault.
 
-```
-ORBI → SCOUT → RECON → GUARDIAN → TAILOR → LEDGER → COACH
-```
+Then a friend reached out. Finance and accounting background — sharp, experienced, genuinely good at what they do. But not from tech.
 
-Everything runs at `http://localhost:3000`. Your data never leaves your machine.
+He was spending hours every day just trying to find the right roles. Not applying — just *finding*. Then more hours rewriting his resume by hand for each one. And somewhere in the middle of all that, losing track of what he'd sent, what needed a follow-up, what had simply gone quiet. He had no system. Just tabs, spreadsheets, and a growing sense that the process was designed to exhaust you.
 
-> **This is NOT a spray-and-pray tool.** OrbitApply positions you strategically for each role. Quality over volume. Every document produced is tailored, ATS-optimized, and executive-grade.
+He tried using ChatGPT and Claude to speed things up. Most people do. But here's the problem with that approach — and the market data makes it clear:
 
----
+- 75% of resumes are rejected by ATS systems before a human ever sees them, and a general-purpose LLM has no idea how a specific ATS actually parses and scores your file
+- Both ChatGPT and Claude default to recognizable house styles — "results-driven," slightly stilted formality — that experienced recruiters notice immediately
+- In 2023, using ChatGPT for your resume was a clever hack. In 2025, it's just part of the noise — hiring managers are now attuned to generic AI output and flag it fast
+- Using an LLM means starting from scratch every single session. No memory of your profile, no company research, no pipeline tracking, no follow-up reminders. You still have to do all of that manually
 
-## What It Costs
+100 applications at 45 minutes each is 75 hours — two full unpaid work weeks just filling out forms. An LLM cuts the time per application but doesn't solve the coordination problem. You still have to find the jobs, manage the tracker, prep for each company, and remember who said what when.
 
-**The software is free. You pay only your AI provider — directly, at their rates, with no markup.**
+I built him a small tool to handle all of that end-to-end. It helped.
 
-| What | Cost |
-|---|---|
-| OrbitApply software | Free — open source, self-hosted |
-| Job discovery (SCOUT) | **$0** — pure JavaScript, no AI calls |
-| Company intelligence (RECON) | ~$0.05–$0.10 per company (Claude Haiku) |
-| Resume + cover letter (TAILOR) | ~$0.08–$0.15 per job (Claude Sonnet) |
-| Interview prep (COACH) | ~$0.05–$0.10 per prep pack (Claude Sonnet) |
-| **Full run — 5 jobs** | **~$0.40–$0.80 total** |
-| Daily hard cap (default) | $5.00 — enforced by GUARDIAN, not a billing limit |
+So I cleaned it up, made it free, and put it here.
 
-You connect your own [Anthropic API key](https://console.anthropic.com). OrbitApply never touches your billing. There is no SaaS tier, no pro plan, no usage-based pricing charged by us. Every dollar goes directly to Anthropic.
+**If you're job hunting — this is for you. If you're preparing for an interview — this is for you. If you know someone who needs it — please share it.**
 
-**No API key at all?** SCOUT still runs — DuckDuckGo search requires zero keys. You only need an Anthropic key for RECON, TAILOR, and COACH.
+No subscription. No account. Runs on your own machine.
 
 ---
 
@@ -78,114 +68,319 @@ You connect your own [Anthropic API key](https://console.anthropic.com). OrbitAp
 
 ---
 
-## How the Pipeline Works
+## How the workflow works
 
-### ORBI — Master Orchestrator (Claude Sonnet)
-Coordinates the full agent pipeline. Routes jobs through each stage, manages context, enforces sequencing, and surfaces results to the dashboard in real time.
+A single click of **Run** on the dashboard triggers ORBI, the master orchestrator. ORBI sequences all agents in order, streams live step-by-step progress to the UI, and produces a structured result at the end. Here is exactly what happens, in order.
 
-### SCOUT — Job Discovery (No AI cost)
-Runs 15 parallel searches across 40+ job sites using a waterfall of 7 search providers (Tavily → Brave → SerpAPI → Bing → Google → Jina → DuckDuckGo). Scores every result locally in pure JavaScript — zero AI cost at this stage. Resolves the employer name from title patterns, snippet text, and company-owned career hosts, and filters out aggregator search/browse pages — no AI required.
+---
 
-**Fit scoring (0–100):**
-| Factor | Points |
-|---|---|
-| Title match | 35 |
-| Location match | 25 |
+### Step 1 — SCOUT: Job Discovery
+
+SCOUT reads your `memory/profile.json` to understand your target roles, locations, salary range, and skills. It then builds up to 15 targeted search queries across two tiers:
+
+- **Primary queries** (advanced Tavily depth) — high-signal titles like `"Director of AI"`, `"Head of AI"`, `"Agentic AI"` scoped to direct ATS platforms: Lever, Greenhouse, Ashby, Workday, SmartRecruiters
+- **Extended queries** (basic Tavily depth) — broader role variants and profile-driven terms
+
+SCOUT runs all queries in parallel, collects raw results, then scores every result locally using a pure JavaScript fit scoring engine — **no AI call at this stage**, which keeps costs near zero for discovery.
+
+**Fit scoring breakdown (0–100):**
+
+| Factor | Max points |
+|--------|-----------|
+| Title match (senior AI signal keywords) | 35 |
+| Location match (remote preference / city) | 25 |
 | Salary range overlap | 20 |
 | Skills keyword match | 20 |
 
-### RECON — Company Intelligence (Claude Haiku)
-For each qualified job, RECON builds a structured intelligence profile: culture signals, salary benchmarks, funding stage, tech stack, red flags, opportunity score, and risk score.
+- Results scoring below 40 are dropped silently.
+- Results scoring 40–69 are shown in the UI for your reference.
+- Results scoring 70+ are marked **qualified** and passed to the next stage.
+- Any company in `memory/blacklist.json` is filtered out before results reach ORBI.
 
-### GUARDIAN — Safety Layer (No AI)
-Runs before every TAILOR action. Enforces daily budget cap ($5), apply limits (15/day), blacklist, and protected contacts. No agent can bypass GUARDIAN.
+SCOUT saves today's results to `workspace-scout/results-{date}.json`.
 
-### TAILOR — Document Generation (Claude Sonnet)
-For every job scoring 60+, TAILOR runs two sequential Claude Sonnet calls:
-
-**Resume tailoring** — rewrites bullet points to mirror JD language, injects ATS keywords, applies strategic outcome-focused positioning in the summary, and is **industry-aware** (infers the target industry from the job and your `targetIndustries`). Runs an internal ATS simulation targeting 75+/100.
-
-**Cover letter writing** — executive-structured, results-first format. 250–320 words. Leads with the specific outcome you deliver, quantifies your revenue impact, identifies the bottleneck you solve, outlines your 30-60-90 day approach, and closes with tracked achievements. Executive tone. No filler phrases. Ever.
-
-**PDF output** — both documents are rendered as polished A4 **PDFs** (header band, section rules, two-column competencies, smart page breaks, page numbers) and saved to `Apply/applications/<Company> - <Title>/`. Falls back to `.txt` if PDF generation fails.
-
-### LEDGER — Pipeline Tracker (No AI)
-Registers every application with full metadata, status tracking, follow-up reminders, and budget accounting.
-
-### COACH — Interview Prep (Claude Sonnet)
-Auto-triggers when you update an application to Phone Screen or Interview stage — **or run it on demand** from the Pipeline application modal (**Generate / Refresh** and **View Prep Pack** buttons). Generates a full prep pack: 10 behavioral questions with STAR templates, salary negotiation script anchored 15–20% above market, and recent news items to reference naturally.
-
-The technical/domain section is grounded in a built-in **GenAI interview question bank** (`src/data/genaiInterviewBank.js`) — 32 vetted questions across 9 categories (LLM fundamentals, RAG, agents, fine-tuning, prompt/context engineering, evaluation, governance, production/cost, AI strategy & leadership), automatically weighted to the role's seniority and your profile.
+**You can also manually import a job** by pasting a URL into the dashboard. SCOUT will fetch the page via Tavily, extract the title and description, score it, and add it to today's results.
 
 ---
 
-## Agent Summary
+### Step 2 — RECON: Company Intelligence
 
-| Agent | Model | Role |
-|---|---|---|
-| **ORBI** | Claude Sonnet | Master orchestrator |
-| **SCOUT** | No AI (pure JS) | Job discovery — 7 search providers, local scoring |
-| **RECON** | Claude Haiku | Company intelligence |
-| **GUARDIAN** | No AI (pure JS) | Safety: budget, rate limits, blacklist |
-| **TAILOR** | Claude Sonnet | Resume + cover letter generation |
-| **LEDGER** | No AI (pure JS) | Pipeline tracker |
-| **COACH** | Claude Sonnet | Interview prep — auto-triggered on stage change or on demand; grounded in a GenAI question bank |
+For each qualified job (up to 8 companies per run), RECON builds a structured intelligence profile using Tavily web searches:
 
----
+- Employee reviews and culture signals
+- Salary benchmarks for the role
+- Recent news — funding rounds, layoffs, product launches
+- Tech stack from engineering blogs and job descriptions
 
-## Search Providers (Waterfall Fallback)
+RECON sends all gathered data to **Claude Haiku** to synthesise into a structured JSON profile containing: company size, funding stage, tech stack, culture summary, Glassdoor rating, salary benchmark (low/mid/high), red flags, opportunity score (0–100), and risk score (0–100).
 
-OrbitApply works even without a paid Tavily subscription. It automatically falls through 7 providers until it finds results:
+Each profile is saved to `workspace-recon/{company-slug}-intel.json` and passed to TAILOR for document personalisation and to COACH for interview prep.
 
-| Priority | Provider | Cost | Key Required |
-|---|---|---|---|
-| 1 | Tavily | Paid | Yes |
-| 2 | Brave Search | 2000/month free | Yes |
-| 3 | SerpAPI | 100/month free | Yes |
-| 4 | Bing Search | 1000/month free | Yes |
-| 5 | Google CSE | 100/day free | Yes |
-| 6 | Jina AI | Free tier | Optional |
-| 7 | DuckDuckGo | Free, unlimited | **No key needed** |
+> If RECON hits an API rate limit, it skips remaining companies and continues the run with the intel already gathered.
 
 ---
 
-## Quick Start
+### Step 3 — TAILOR: Document Generation
 
-### Prerequisites
-- Node.js v18+ — [nodejs.org](https://nodejs.org)
-- pnpm — `npm install -g pnpm`
-- Git — [git-scm.com](https://git-scm.com)
-- Anthropic API key — [console.anthropic.com](https://console.anthropic.com)
-- At least one search provider key (or use DuckDuckGo — no key needed)
+TAILOR processes every job with a fit score of 60 or above. For each job it runs two sequential Claude Sonnet calls:
 
-### Install
+**Resume tailoring:**
+- Loads your base resume from `memory/resume.md`
+- Loads the job description snippet and RECON intel for the company
+- Rewrites bullet points to mirror JD language, injects ATS keywords, and personalises the summary
+- Runs an internal ATS simulation — targeting 70+/100
+- Returns the tailored resume as Markdown with an ATS score and list of injected keywords
 
-```bash
-# Clone
-git clone https://github.com/Orbitumaiopensource/Orbitapply.git
-cd Orbitapply
+**Cover letter writing:**
+- Writes a 250–350 word cover letter with a clear outcome-first structure
+- Tone: professional, direct — no filler phrases like "I'm excited to apply"
 
-# Install dependencies
-pnpm install
+Both documents are saved into a named folder:
 
-# Set up environment
-cp .env.example .env
-# Edit .env — add your API keys
+```
+Apply/applications/{Company Name} — {Job Title}/
+├── {Title}_{Company}_Resume_{FirstName}.doc
+├── {Title}_{Company}_Coverletter_{FirstName}.doc
+└── metadata.json
 ```
 
-### Configure your profile
+> Before TAILOR runs for any job, GUARDIAN runs a pre-flight check:
+> - `PASS` → proceed to tailoring
+> - `BLOCK` → company is blacklisted or protected contact — skip silently
+> - `PAUSE` → sensitive form fields detected — add to human queue, skip
+> - `HARD_STOP` → daily budget or apply cap reached — stop the entire run
+
+---
+
+### Step 4 — LEDGER: Pipeline Registration
+
+Every successfully tailored job (ATS score ≥ 70, or the only result) is registered in `workspace-ledger/pipeline.json` as a new application record with:
+
+- Full metadata: title, company, URL, platform, fit score, ATS score, document paths
+- Initial status: `applied`
+- Follow-up reminder: set to 7 days after creation
+- Budget cost per application recorded (≈ $0.08 per application)
+
+LEDGER maintains running stats: total applied, response rate, today's count, total budget spent.
+
+---
+
+### Step 5 — SUBMIT: Application Submission *(optional)*
+
+SUBMIT is only active if `submit.autoSubmit: true` is set in `orbitapply.json`. It is **off by default**.
+
+When enabled, SUBMIT uses Playwright to automate form filling on supported ATS platforms:
+
+| Platform | Support |
+|----------|---------|
+| Workday | Multi-step application wizard |
+| Greenhouse | Standard form + custom questions |
+| Lever | Application form + cover letter field |
+| iCIMS | Enterprise ATS form fill |
+| Direct career pages | Best-effort Playwright |
+
+SUBMIT enforces a minimum **45-second delay** (±30% jitter) between submissions to avoid triggering spam detection. It fills standard fields from your profile, pastes the tailored resume and cover letter, takes a screenshot after each form page, and logs the full submission.
+
+GUARDIAN runs again immediately before each submission. If the daily apply limit (15) has been hit, or the daily budget ($5) is exhausted, SUBMIT hard-stops and does not continue.
+
+---
+
+### After the run — ongoing pipeline management
+
+Once a run completes, the dashboard shows your full application pipeline board. You move applications through stages manually as real responses come in:
+
+```
+applied → viewed → phone_screen → interview_1 → interview_2 → offer
+                                                              → rejected
+                                                              → withdrawn
+```
+
+When you update a status to `phone_screen`, `interview_1`, or `interview_2`, LEDGER triggers **COACH**.
+
+---
+
+### COACH: Interview Preparation *(triggered automatically on stage change)*
+
+COACH activates the moment you mark an application as reaching an interview stage. It loads the RECON intel for that company and generates a full prep pack saved to `workspace-coach/{job-id}-prep.md`:
+
+1. **Company overview** — from the RECON intelligence profile
+2. **Role analysis** — what the interviewer is actually testing for
+3. **10 behavioural questions** with STAR-method answer templates
+4. **5–10 technical/domain questions** matched to the role
+5. **Salary negotiation script** — anchored 15–20% above the RECON salary benchmark mid-point, with exact counter-offer language
+6. **5 strategic questions to ask the interviewer**
+7. **3 recent news items** to reference naturally in conversation
+
+---
+
+### Budget and safety controls (GUARDIAN)
+
+GUARDIAN runs as a gating layer before every TAILOR and SUBMIT action. It cannot be bypassed by any agent.
+
+| Control | Default | Configurable in |
+|---------|---------|----------------|
+| Daily budget cap | $5.00 (hard stop) | `orbitapply.json` → `budget.dailyLimitUSD` |
+| Budget alert threshold | $3.00 (warn) | `orbitapply.json` → `budget.alertAtUSD` |
+| Max applications per day | 15 | `orbitapply.json` → `guardian.maxAppliesPerDay` |
+| Rate limit between submits | 45 seconds | `orbitapply.json` → `guardian.rateLimitMs` |
+| Human pause fields | salary, diversity, custom_essay, security_clearance | `orbitapply.json` → `guardian.humanPauseFields` |
+
+---
+
+## Agent summary
+
+| Agent | Model | Role |
+|-------|-------|------|
+| **ORBI** | Claude Sonnet | Master orchestrator — sequences all agents, streams progress, enforces fit threshold |
+| **SCOUT** | No AI (pure JS) | Job discovery via Tavily — 15 parallel searches, local fit scoring |
+| **RECON** | Claude Haiku | Company intelligence — culture, salary, funding, red flags |
+| **TAILOR** | Claude Sonnet | Resume tailoring + cover letter writing per JD |
+| **GUARDIAN** | No AI (pure JS) | Safety layer — budget, rate limits, blacklist, human queue |
+| **SUBMIT** | Claude Haiku | Playwright-based form fill and submission (off by default) |
+| **LEDGER** | No AI (pure JS) | Pipeline tracker — status, stats, follow-up reminders |
+| **COACH** | Claude Sonnet | Interview prep — activated on phone_screen/interview stage change |
+
+---
+
+## Prerequisites
+
+Before you start, install:
+
+- **Node.js** v18 or later — [nodejs.org](https://nodejs.org)
+- **pnpm** — install with `npm install -g pnpm` after Node.js
+- **Git** — [git-scm.com](https://git-scm.com)
+
+---
+
+## API Keys
+
+OrbitApply requires two API keys.
+
+### 1. Anthropic Claude (required)
+
+All AI writing — resume tailoring, cover letters, company intelligence, interview coaching — runs on Claude.
+
+1. Sign up at [console.anthropic.com](https://console.anthropic.com)
+2. Go to **API Keys** → **Create Key**
+3. Copy the key — it starts with `sk-ant-`
+
+### 2. Tavily (required)
+
+SCOUT and RECON use Tavily for all web searches.
+
+1. Sign up at [tavily.com](https://tavily.com)
+2. Go to your dashboard → copy your API key
+3. The key starts with `tvly-`
+
+---
+
+## Installation
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Orbitumaiopensource/Orbitapply.git
+cd Orbitapply
+```
+
+### 2. Install dependencies
+
+```bash
+pnpm install
+```
+
+### 3. Set up your environment file
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and fill in your real keys:
+
+```
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+TAVILY_API_KEY=tvly-your-key-here
+PORT=3000
+NODE_ENV=development
+```
+
+> **Never commit `.env` to version control.** It is already in `.gitignore`.
+
+### 4. Set up your candidate profile
+
+`memory/profile.json` is your personal data file. It is gitignored and must be created manually.
 
 ```bash
 # Mac/Linux
-mkdir -p memory && touch memory/profile.json memory/resume.md
+mkdir -p memory && touch memory/profile.json
+
+# Windows (PowerShell)
+New-Item -ItemType Directory -Force -Path memory
+New-Item -ItemType File -Path memory\profile.json
+```
+
+Paste this template into `memory/profile.json` and fill in your information:
+
+```json
+{
+  "name": "Your Full Name",
+  "title": "Your Current Job Title",
+  "email": "your@email.com",
+  "phone": "+1 555 000 0000",
+  "location": "City, State",
+  "linkedinUrl": "https://linkedin.com/in/yourprofile",
+  "githubUrl": "https://github.com/yourusername",
+  "targetRoles": ["Director of AI", "Head of AI", "VP of AI"],
+  "targetLocations": ["Remote", "New York, NY"],
+  "remotePreference": "remote",
+  "targetIndustries": ["SaaS", "Fintech", "Enterprise Software"],
+  "salaryCurrency": "USD",
+  "salaryMin": 150000,
+  "salaryMax": 250000,
+  "yearsExperience": 8,
+  "skills": ["AI Strategy", "LLM", "Agentic AI", "Python", "Node.js", "AWS"],
+  "coverLetterTone": "professional",
+  "education": [
+    {
+      "degree": "B.S. Computer Science",
+      "school": "University Name",
+      "year": 2016
+    }
+  ],
+  "resume": {
+    "path": "memory/resume.md",
+    "summary": "One to two sentence professional summary."
+  }
+}
+```
+
+### 5. Create your base resume
+
+Create `memory/resume.md` with your resume in Markdown format. TAILOR rewrites bullet language for each job — it never invents experience, so keep this file factual and complete.
+
+```bash
+# Mac/Linux
+touch memory/resume.md
+
+# Windows (PowerShell)
+New-Item -ItemType File -Path memory\resume.md
+```
+
+### 6. Create required runtime directories and seed files
+
+These directories and files are gitignored and must be created locally before first run:
+
+```bash
+# Mac/Linux
+mkdir -p sessions credentials logs Apply
+echo '{}' > sessions/sessions.json
 echo '{"companies":[]}' > memory/blacklist.json
 echo '{"contacts":[]}' > memory/protected.json
-mkdir -p sessions && echo '{}' > sessions/sessions.json
 ```
 
 ```powershell
-# Windows
-foreach ($dir in @("sessions","credentials","logs","Apply","memory")) {
+# Windows (PowerShell)
+foreach ($dir in @("sessions","credentials","logs","Apply")) {
   New-Item -ItemType Directory -Force -Path $dir
 }
 Set-Content -Path sessions\sessions.json -Value '{}'
@@ -193,156 +388,183 @@ Set-Content -Path memory\blacklist.json -Value '{"companies":[]}'
 Set-Content -Path memory\protected.json -Value '{"contacts":[]}'
 ```
 
-Edit `memory/profile.json` with your details (see [SETUP.md](SETUP.md) for the full template).
+---
 
-### Run
+## Running the app
+
+### Development mode (recommended — auto-restarts on file changes)
 
 ```bash
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+### Production mode
+
+```bash
+pnpm start
+```
+
+Open your browser:
+
+```
+http://localhost:3000
+```
+
+No login required. The app is bound to `127.0.0.1` and is never accessible from the network.
 
 ---
 
-## Daily Usage
+## Daily usage
 
 1. Open `http://localhost:3000`
-2. Type your target role and click **Start Job Search Run**
-3. Watch live: SCOUT → RECON → TAILOR → LEDGER
-4. Review tailored resume + cover letter **PDFs** in `Apply/applications/`
-5. Update application status in the Pipeline board as responses arrive
-6. Click any Pipeline card → **INTERVIEW PREP · COACH** → **Generate / Refresh** for a full prep pack (also auto-generated when you reach Phone Screen or Interview)
+2. Click **Run** and set your goal (role, location, urgency)
+3. Watch the live progress: SCOUT → RECON → TAILOR → LEDGER
+4. Review SCOUT results — approve or reject individual jobs if you wish
+5. Check the **Documents** section to review your tailored resume and cover letter for each job
+6. When a real response arrives, update the application status in the pipeline board
+7. When a stage reaches **Phone Screen** or **Interview**, COACH automatically generates your prep pack
 
 ---
 
-## Job Search Quality Controls
+## Enabling auto-submit
 
-OrbitApply lets you control search quality from the **Profile Setup UI** — no config files needed:
+SUBMIT is disabled by default. To enable automated form filling, add the following to `orbitapply.json`:
 
-- **Seniority keywords** — define what counts as a senior role for YOUR career level
-- **Exclude titles** — filter out junior, intern, or irrelevant roles automatically
-- **Minimum fit score** — set your own quality threshold (default: 50)
-- **Minimum qualify score** — set the threshold for auto-passing to RECON + TAILOR (default: 70)
+```json
+"submit": {
+  "autoSubmit": true
+}
+```
 
----
-
-## Budget & Safety
-
-GUARDIAN enforces hard limits on every run — no agent can bypass them.
-
-| Control | Default | Where to Change |
-|---|---|---|
-| Daily budget cap | $5.00 | `orbitapply.json` → `budget.dailyLimitUSD` |
-| Max applications/day | 15 | `orbitapply.json` → `guardian.maxAppliesPerDay` |
-| Rate limit between applications | 45 seconds | `orbitapply.json` → `guardian.rateLimitMs` |
-
-The daily cap is a safeguard against runaway AI spend — not a platform charge. You will never be billed by OrbitApply.
+> With auto-submit enabled, GUARDIAN still enforces all limits. Applications with sensitive fields (salary, diversity, custom essay, security clearance) are always routed to the human review queue, never submitted automatically.
 
 ---
 
-## Project Structure
+## Blacklisting companies
+
+To prevent OrbitApply from ever finding, tailoring, or applying to a company, add it to `memory/blacklist.json`:
+
+```json
+{
+  "companies": ["CompanyName", "another-company.com"]
+}
+```
+
+GUARDIAN checks this list at the SCOUT filter stage and again before every TAILOR and SUBMIT action.
+
+---
+
+## Budget controls
+
+The default daily spend cap is **$5 USD** across all Anthropic API calls. Configurable in `orbitapply.json`:
+
+```json
+"budget": {
+  "dailyLimitUSD": 5,
+  "hardStop": true,
+  "alertAtUSD": 3
+}
+```
+
+Approximate cost per full run (SCOUT + RECON + TAILOR for 5 jobs): **$0.40–$0.80**
+
+---
+
+## Project structure
 
 ```
 OrbitApply/
-├── agents/              # Agent SOUL.md files — identity and rules per agent
+├── agents/              # Agent identity and rules (SOUL.md per agent)
+│   ├── orbi/
+│   ├── scout/
+│   ├── recon/
+│   ├── tailor/
+│   ├── guardian/
+│   ├── submit/
+│   ├── ledger/
+│   └── coach/
 ├── src/
-│   ├── config/          # jobSites.js — add new job sources here
-│   ├── data/            # genaiInterviewBank.js — COACH question bank
-│   ├── routes/          # Express API routes
-│   ├── services/        # Agent service modules
-│   └── utils/           # Logger, fileStore, searchProvider
-├── ui/                  # Frontend dashboard (served at localhost:3000)
-├── memory/              # profile.json, resume.md, blacklist (gitignored)
-├── Apply/               # Generated resumes and cover letters (gitignored)
-├── .env.example         # API key template
-├── orbitapply.json      # Agent config, budget, guardian settings
-└── SETUP.md             # Full setup guide for Windows and Mac
+│   ├── routes/          # Express API routes (/api/v1/*)
+│   ├── services/        # Agent service modules (one file per agent)
+│   └── utils/           # Logger, constants, file store
+├── ui/                  # Frontend (served by Express at /)
+├── memory/              # profile.json, resume.md, blacklist.json (gitignored)
+├── sessions/            # Active session state (gitignored)
+├── credentials/         # Auth profiles (gitignored)
+├── logs/                # Runtime logs (gitignored)
+├── Apply/               # All generated application documents
+│   └── applications/
+│       └── {Company} — {Job Title}/
+│           ├── {Title}_{Company}_Resume_{Name}.doc
+│           ├── {Title}_{Company}_Coverletter_{Name}.doc
+│           └── metadata.json
+├── workspace-scout/     # Daily job search results (gitignored)
+├── workspace-recon/     # Company intelligence profiles (gitignored)
+├── workspace-tailor/    # Fallback document workspace (gitignored)
+├── workspace-ledger/    # pipeline.json — application tracker (gitignored)
+├── workspace-coach/     # Interview prep packs (gitignored)
+├── .env.example
+├── orbitapply.json      # Agent configuration, budget, guardian settings
+├── index.js             # Express server entry point
+└── package.json
 ```
 
 ---
 
-## Adding Job Sites
+## Logs
 
-All job sources live in one file — `src/config/jobSites.js`. Add any site in one line:
-
-```javascript
-{ domain: 'yourjobsite.com', name: 'yourjobsite', type: 'direct', active: true },
-```
-
-No other files to touch. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+| File | Contents |
+|------|----------|
+| `logs/run.log` | Full pipeline run logs |
+| `logs/app.log` | Server errors |
+| `logs/agent-actions.log` | Every agent delegation and action |
 
 ---
 
 ## Security
 
 - Server binds to `127.0.0.1` only — never accessible from the network
-- All API keys in `.env` — never hardcoded, never committed
-- `memory/` and `Apply/` are gitignored — your personal data never leaves your machine
-- GUARDIAN enforces all safety limits — cannot be bypassed by any agent
+- All API keys are in `.env` — never hardcoded, never committed
+- No authentication required — physical access to the machine is the only gate
+- Never expose this app beyond localhost
 
 ---
 
 ## Troubleshooting
 
-| Error | Fix |
-|---|---|
-| `blacklist is not iterable` | `Set-Content -Path memory\blacklist.json -Value '{"companies":[]}'` |
-| `No target roles found` | Check `targetRoles` in `memory/profile.json` |
-| SCOUT returns zero results | Check API keys in `.env` — DuckDuckGo works with no key |
-| Budget hard stop | Raise `dailyLimitUSD` in `orbitapply.json` |
-| Documents look generic | Add real numbers and achievements to `memory/resume.md` |
+**`pnpm: command not found`** — Run `npm install -g pnpm` first.
 
-Full troubleshooting guide → [SETUP.md](SETUP.md)
+**`Cannot find module` on startup** — Run `pnpm install` to restore dependencies.
 
----
+**`No target roles found in profile`** — Open `memory/profile.json` and make sure `targetRoles` is a non-empty array.
 
-## Roadmap
+**SCOUT returns zero results** — Check your `TAVILY_API_KEY` in `.env`. Verify remaining credits on your Tavily dashboard.
 
-- [x] PDF export for tailored resumes ✅ *(shipped in v1.2.0)*
-- [ ] Email outreach agent (follow-up automation)
-- [ ] LinkedIn integration for direct apply
-- [ ] Multi-language README
-- [ ] Docker one-command setup
-- [ ] Analytics dashboard (response rate trends, salary benchmarks)
+**Budget hard stop at startup** — The $5 daily cap was already reached today. Either wait until midnight or raise `dailyLimitUSD` in `orbitapply.json`.
 
----
+**TAILOR documents look generic** — Ensure `memory/resume.md` has complete, detailed content. Also check that your profile JSON accurately reflects your seniority and specialisation.
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) — PRs welcome. The easiest contribution is adding a new job site to `src/config/jobSites.js`.
-
-Join the community on [Discord](https://discord.gg/ZamMu766Q) — get help, share wins, and discuss features.
-
----
-
-## Built With
-
-[![Claude](https://img.shields.io/badge/Claude_Sonnet_4-000?style=flat&logo=anthropic&logoColor=white)](https://anthropic.com)
-[![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org)
-[![Express](https://img.shields.io/badge/Express-000?style=flat&logo=express&logoColor=white)](https://expressjs.com)
-[![Tavily](https://img.shields.io/badge/Tavily-FF6B35?style=flat)](https://tavily.com)
-
----
-
-## About the Author
-
-**Shuv Chowdhury** — Founder & CEO, OrbitumAI (Brewongo.ai LLC)
-
-25 years of Fortune 500 enterprise transformation across 51 countries. Led a $50M+ global payroll transformation spanning 24 vendors. Now building agentic AI systems for non-technical founders and SMBs — entirely through prompt engineering, no traditional code.
-
-OrbitApply was built and shipped without writing a single line of traditional code. That's the point. If the tool that finds you a job can be built without code, so can your next product.
-
-[![Website](https://img.shields.io/badge/orbitumai.com-000?style=flat&logo=safari&logoColor=white)](https://orbitumai.com)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/shuv)
-[![Discord](https://img.shields.io/badge/Discord-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/ZamMu766Q)
+**SUBMIT fails on a form** — Disable `autoSubmit` for that session and submit manually. Review the screenshots in `workspace-submit/` to see where the form failed.
 
 ---
 
 ## License
 
-OrbitumAI Free License — free to use, modify, and distribute for personal and commercial use. See [LICENSE](LICENSE) for details.
+OrbitumAI Free License — free to use, modify, and distribute. See [LICENSE](LICENSE) for details.
 
 ---
 
-*OrbitApply is part of the OrbitumAI open source suite.*
+## About the builder
+
+**Shuv Chowdhury** — Founder, OrbitumAI
+
+20+ years in enterprise transformation. 2,500+ hours in AI over the last two years.
+Now building AI products for non-technical founders and anyone who needs them.
+
+- [shuvchowdhury.com](https://shuvchowdhury.com)
+- [OrbitumAI](https://orbitumai.com)
+- [LinkedIn](https://linkedin.com/in/shuvchowdhury)
+
+---
+
+*If it helps you land something — I'd genuinely love to hear about it.*
