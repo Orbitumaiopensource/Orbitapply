@@ -70,13 +70,13 @@ function drawRule(doc, x, y, w, color, thickness) {
     .moveTo(x, y).lineTo(x + w, y).stroke().restore();
 }
 
-async function generatePDF(resumeText, coverText, outputFolder, nameSlug, titleSlug, yearMonth, job, jobDescText) {
+async function generatePDF(resumeText, coverText, outputFolder, nameSlug, titleSlug, yearMonth, job, jobDescText, profile) {
   const resumePdfPath = path.join(outputFolder, `${nameSlug}_Resume_${titleSlug}.${yearMonth}.pdf`);
   const coverPdfPath = path.join(outputFolder, `${nameSlug}_CoverLetter_${titleSlug}.${yearMonth}.pdf`);
   const jobDescPdfPath = path.join(outputFolder, `JobDescription_${titleSlug}.${yearMonth}.pdf`);
 
   await buildResumePDF(resumeText, resumePdfPath);
-  await buildCoverPDF(coverText, coverPdfPath);
+  await buildCoverPDF(coverText, coverPdfPath, profile);
   await buildJobDescriptionPDF(job || {}, jobDescText, jobDescPdfPath);
 
   return { resumePdfPath, coverPdfPath, jobDescPdfPath };
@@ -224,34 +224,106 @@ async function buildResumePDF(text, outputPath) {
   });
 }
 
-async function buildCoverPDF(text, outputPath) {
+async function buildCoverPDF(text, outputPath, profile) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 0 });
+    const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true });
     const stream = fs.createWriteStream(outputPath);
     doc.pipe(stream);
 
-    const W = 595, ML = 64, MW = W - ML - 64;
-    const ACCENT = '#1A3C5E';
+    const W = 595, H = 842;
+    const ML = 64, MR = 64, MW = W - ML - MR;
+    const DARK = '#1A1A1A';
     const MID = '#333333';
+    const LIGHT = '#7A7A7A';
+    const BOTTOM = 800;
 
-    // Header bar
-    doc.rect(0, 0, W, 8).fill(ACCENT);
+    // === HEADER: candidate name + contact + horizontal rule ===
+    const candidateName = safe(profile?.name || '');
+    const contactParts = [profile?.location, profile?.email, profile?.linkedinUrl]
+      .filter(Boolean).map(safe);
+    const contactLine = contactParts.join('  |  ');
 
-    let y = 48;
+    doc.fontSize(20).fillColor(DARK).font('Helvetica-Bold')
+      .text(candidateName, ML, 48, { width: MW });
+    let y = doc.y + 4;
+
+    if (contactLine) {
+      doc.fontSize(9.5).fillColor(LIGHT).font('Helvetica')
+        .text(contactLine, ML, y, { width: MW });
+      y = doc.y + 10;
+    }
+    drawRule(doc, ML, y, MW, '#CCCCCC', 0.75);
+    y += 20;
+
+    // === BODY: parse the AI cover letter text ===
+    const CLOSING_RE = /^(sincerely|best regards|regards|warm regards|yours truly|respectfully),?$/i;
+    let inClosing = false;
+    let closingNameWritten = false;
+
     const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
 
-    lines.forEach(rawLine => {
-      if (y > 800) { doc.addPage(); y = 40; }
-      const line = rawLine.trim();
-      if (!line) { y += 8; return; }
+      if (y > BOTTOM) { doc.addPage(); y = 48; }
 
-      doc.fontSize(9.5).fillColor(MID).font('Helvetica')
-        .text(safe(line), ML, y, { width: MW, lineGap: 3 });
-      y = doc.y + 4;
-    });
+      // Blank line → spacing
+      if (!line) {
+        y += inClosing && !closingNameWritten ? 14 : 10;
+        continue;
+      }
 
-    // Footer bar
-    doc.rect(0, 830, W, 12).fill(ACCENT);
+      // Skip AI-echoed candidate name/contact at the top of the letter body
+      if (!inClosing && i < 6 && candidateName && line === candidateName) continue;
+
+      // "Re:" reference line → bold
+      if (/^Re:/i.test(line)) {
+        doc.fontSize(10.5).fillColor(DARK).font('Helvetica-Bold')
+          .text(safe(line), ML, y, { width: MW });
+        y = doc.y + 8;
+        continue;
+      }
+
+      // Closing word (Sincerely, etc.)
+      if (CLOSING_RE.test(line)) {
+        inClosing = true;
+        closingNameWritten = false;
+        doc.fontSize(10.5).fillColor(MID).font('Helvetica')
+          .text(safe(line), ML, y, { width: MW });
+        y = doc.y + 8;
+        continue;
+      }
+
+      // First non-empty line after closing → bold name
+      if (inClosing && !closingNameWritten) {
+        closingNameWritten = true;
+        doc.fontSize(10.5).fillColor(DARK).font('Helvetica-Bold')
+          .text(safe(line), ML, y, { width: MW });
+        y = doc.y + 4;
+        continue;
+      }
+
+      // Subsequent closing lines (title, website) → light regular text
+      if (inClosing) {
+        doc.fontSize(9.5).fillColor(MID).font('Helvetica')
+          .text(safe(line), ML, y, { width: MW });
+        y = doc.y + 4;
+        continue;
+      }
+
+      // Body paragraphs (long lines) → justified; short lines (date, address, salutation) → left
+      const isBodyParagraph = line.length > 80;
+      doc.fontSize(10.5).fillColor(MID).font('Helvetica')
+        .text(safe(line), ML, y, { width: MW, align: isBodyParagraph ? 'justify' : 'left', lineGap: 3 });
+      y = doc.y + 8;
+    }
+
+    // Page numbers
+    const range = doc.bufferedPageRange();
+    for (let p = 0; p < range.count; p++) {
+      doc.switchToPage(range.start + p);
+      doc.fontSize(7.5).fillColor(LIGHT).font('Helvetica')
+        .text(`Page ${p + 1} of ${range.count}`, ML, H - 28, { width: MW, align: 'right' });
+    }
 
     doc.end();
     stream.on('finish', () => resolve(outputPath));
@@ -471,18 +543,36 @@ CANDIDATE:
 - Key Skills: ${(profile.skills || []).slice(0, 10).join(', ')}
 ${reconContext}
 
-Write a cover letter using the ORBIT Framework:
-• Para 1 (OUTCOME): Specific result this candidate delivers to ${job.company}
-• Para 2 (REVENUE LEVER + BOTTLENECK): Why ${job.company} needs this person now
-• Para 3 (IMPLEMENT): Concrete 30-60-90 day plan for this specific role
-• Para 4 (TRACK): 2-3 quantified past achievements as proof
+Write a cover letter using the ORBIT Framework with the EXACT structure below (plain text, no markdown):
+
+[Today's date, e.g. May 26, 2026]
+
+Hiring Team
+${job.company}
+${job.location || ''}
+
+Re: ${job.title}
+
+Dear Hiring Team,
+
+[Para 1 — OUTCOME: specific result this candidate delivers to ${job.company}]
+
+[Para 2 — REVENUE LEVER + BOTTLENECK: why ${job.company} needs this person now]
+
+[Para 3 — IMPLEMENT: concrete 30-60-90 day plan for this specific role]
+
+[Para 4 — TRACK: 2-3 quantified past achievements as proof, then a professional closing sentence]
+
+Sincerely,
+
+${profile.name}
+${profile.title || ''}
 
 RULES:
-- 280-320 words total
-- Never start with "I am excited to apply" or "I am writing to apply"
+- 280-320 words in the four body paragraphs only
+- Never start Para 1 with "I am excited to apply" or "I am writing to apply"
 - Professional, direct, no filler phrases
-- No markdown symbols
-- Return ONLY the cover letter text — no subject line, no JSON wrapper
+- No markdown symbols, no JSON, no extra commentary outside the letter
 `;
 
   // Resume and cover prompts are built independently above and the cover
@@ -536,7 +626,7 @@ RULES:
   let coverPdfPath = null;
   let jobDescPdfPath = null;
   try {
-    const paths = await generatePDF(resumeText, coverLetter, appFolder, nameSlug, titleSlug, yearMonth, job, jobDescText);
+    const paths = await generatePDF(resumeText, coverLetter, appFolder, nameSlug, titleSlug, yearMonth, job, jobDescText, profile);
     resumePdfPath = paths.resumePdfPath;
     coverPdfPath = paths.coverPdfPath;
     jobDescPdfPath = paths.jobDescPdfPath;
