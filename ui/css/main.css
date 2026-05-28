@@ -169,6 +169,75 @@ tr:hover td { background: rgba(0,0,0,.015); }
 .empty-state { padding: 48px 24px; text-align: center; }
 .empty-state-title { font-size: 15px; font-weight: 500; color: var(--text-2); margin-bottom: 6px; }
 .empty-state-sub { font-size: 13px; color: var(--text-muted); }
+.empty-state-actions { margin-top: 18px; display: inline-flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.empty-state-steps { margin: 14px auto 0; max-width: 460px; text-align: left; font-size: 12.5px; color: var(--text-2); line-height: 1.7; padding-left: 22px; }
+.empty-state-steps li { margin: 4px 0; }
+
+/* Inline help tooltip — "?" badge that reveals guidance on hover */
+.tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #E5E7EB;
+  color: #6B7280;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 6px;
+  cursor: help;
+  vertical-align: middle;
+  position: relative;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.tip:hover, .tip:focus { background: #1F2937; color: #fff; outline: none; }
+.tip:hover::after, .tip:focus::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: -6px;
+  right: auto;
+  transform: none;
+  background: #111827;
+  color: #fff;
+  padding: 9px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  width: max-content;
+  max-width: 300px;
+  z-index: 1000;
+  text-transform: none;
+  letter-spacing: 0;
+  text-align: left;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  pointer-events: none;
+}
+.tip:hover::before, .tip:focus::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 4px;
+  transform: none;
+  border: 6px solid transparent;
+  border-top-color: #111827;
+  z-index: 1000;
+  pointer-events: none;
+}
+/* Modifier — anchor tooltip to the right edge of the badge for elements
+   near the right edge of the layout. Add class="tip tip-left" when needed. */
+.tip.tip-left:hover::after, .tip.tip-left:focus::after {
+  left: auto;
+  right: -6px;
+}
+.tip.tip-left:hover::before, .tip.tip-left:focus::before {
+  left: auto;
+  right: 4px;
+}
 
 /* Spinner */
 .spinner { width: 16px; height: 16px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; display: inline-block; animation: spin 0.7s linear infinite; }

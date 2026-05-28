@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { logger } = require('../utils/logger');
-const { getDocuments, getDocumentText, saveDocumentText } = require('../services/tailor');
+const { getDocuments, getDocumentText, saveDocumentText, regenerateDocument } = require('../services/tailor');
 const { getPrepPack, runCoach } = require('../services/coach');
 const ledger = require('../services/ledger');
 
@@ -23,6 +23,29 @@ router.get('/:jobId/text', (req, res) => {
   } catch (err) {
     logger.error(`GET /documents/:jobId/text failed: ${err.message}`, err);
     res.status(500).json({ error: 'Failed to load document text.' });
+  }
+});
+
+// POST to re-run TAILOR AI for a single document (optional userPrompt)
+router.post('/:jobId/regenerate', async (req, res) => {
+  const { type, prompt } = req.body || {};
+  if (type !== 'resume' && type !== 'cover') {
+    return res.status(400).json({ error: "type must be 'resume' or 'cover'." });
+  }
+  try {
+    const result = await regenerateDocument(req.params.jobId, type, prompt || '');
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    logger.error(`POST /documents/:jobId/regenerate failed: ${err.message}`, err);
+    const knownError = err.message?.includes('usage limits')
+      || err.message?.includes('API usage limits')
+      || err.message?.includes('timed out')
+      || err.message?.includes('ANTHROPIC_API_KEY')
+      || err.message?.includes('Application folder not found')
+      || err.message?.includes('Job context not found');
+    res.status(knownError ? 503 : 500).json({
+      error: knownError ? err.message : 'Failed to regenerate document. Check server logs.',
+    });
   }
 });
 

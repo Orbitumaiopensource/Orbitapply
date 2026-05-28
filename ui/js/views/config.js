@@ -12,7 +12,7 @@ async function renderConfig() {
     <div id="config-alert"></div>
 
     <div class="card" style="margin-bottom:var(--gap)">
-      <div class="section-label">Output Folder</div>
+      <div class="section-label">Output Folder ${tip('Where TAILOR writes tailored resumes, cover letters, and job-description PDFs. Each application gets its own subfolder under "applications/". Leave blank to use the project workspace.')}</div>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
         All generated files (tailored resumes, cover letters, CSV exports) will be saved here.
         Leave blank to use the default <code>workspace-*</code> folders inside the project.
@@ -40,19 +40,19 @@ async function renderConfig() {
 
     <div class="grid-2" style="margin-bottom:var(--gap)">
       <div class="card">
-        <div class="section-label">Budget Settings</div>
-        <div class="form-group"><label class="form-label">Daily Limit (USD)</label><input id="cfg-budget" class="form-input" type="number" step="0.50" /></div>
-        <div class="form-group"><label class="form-label">Alert At (USD)</label><input id="cfg-alert" class="form-input" type="number" step="0.50" /></div>
+        <div class="section-label">Budget Settings ${tip('Hard cap on Anthropic API spend per day. Tracked across all agent calls (RECON, TAILOR, COACH). When the limit is hit, the run is aborted and no further AI calls are made.')}</div>
+        <div class="form-group"><label class="form-label">Daily Limit (USD) ${tip('Hard ceiling. When reached, all AI agents stop until midnight. Default: $5. Each tailored doc costs roughly $0.01–0.03.')}</label><input id="cfg-budget" class="form-input" type="number" step="0.50" /></div>
+        <div class="form-group"><label class="form-label">Alert At (USD) ${tip('Warning threshold — the dashboard shows a budget alert when you cross this amount. Set below your daily limit. Default: $4.')}</label><input id="cfg-alert" class="form-input" type="number" step="0.50" /></div>
       </div>
       <div class="card">
-        <div class="section-label">Guardian Settings</div>
-        <div class="form-group"><label class="form-label">Max Applies Per Day</label><input id="cfg-maxapply" class="form-input" type="number" /></div>
-        <div class="form-group"><label class="form-label">Rate Limit (ms between submits)</label><input id="cfg-ratelimit" class="form-input" type="number" /></div>
+        <div class="section-label">Guardian Settings ${tip('GUARDIAN is the safety layer. It enforces application caps and rate limits, and runs a preflight check before TAILOR to catch problems early.')}</div>
+        <div class="form-group"><label class="form-label">Max Applies Per Day ${tip('Hard cap on the number of applications LEDGER creates in a single day, to avoid recruiter spam and the appearance of bot activity. Default: 15.')}</label><input id="cfg-maxapply" class="form-input" type="number" /></div>
+        <div class="form-group"><label class="form-label">Rate Limit (ms between submits) ${tip('Minimum wait time between application submissions. Helps avoid tripping rate limits on ATS portals. Default: 45000 (45 seconds).')}</label><input id="cfg-ratelimit" class="form-input" type="number" /></div>
       </div>
     </div>
 
     <div class="card" style="margin-bottom:var(--gap)">
-      <div class="section-label">Human Pause Fields</div>
+      <div class="section-label">Human Pause Fields ${tip('When TAILOR detects ANY of these field names on an application form, it pauses the pipeline and asks for your manual input — used for sensitive or judgement-call fields (salary, diversity, clearance, etc.).')}</div>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">GUARDIAN pauses the pipeline when these field types are detected in application forms.</p>
       <div id="cfg-pause-fields" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px"></div>
       <div style="display:flex;gap:8px">
@@ -62,18 +62,18 @@ async function renderConfig() {
     </div>
 
     <div class="card" style="margin-bottom:var(--gap)">
-      <div class="section-label">Agent Model Assignments</div>
+      <div class="section-label">Agent Model Assignments ${tip('Each AI agent uses a Claude model picked for its job. Sonnet (more capable, more expensive) drives writing and orchestration; Haiku handles fast structured tasks. Model IDs are set in orbitapply.json.')}</div>
       <table>
         <thead><tr><th>Agent</th><th>Role</th><th>Model</th></tr></thead>
         <tbody>
-          <tr><td><b>ORBI</b></td><td>Master Orchestrator</td><td>${badge('claude-sonnet-4', 'blue')}</td></tr>
-          <tr><td><b>TAILOR</b></td><td>Document Generator</td><td>${badge('claude-sonnet-4', 'blue')}</td></tr>
-          <tr><td><b>COACH</b></td><td>Interview Prep</td><td>${badge('claude-sonnet-4', 'blue')}</td></tr>
-          <tr><td><b>SCOUT</b></td><td>Job Discovery</td><td>${badge('claude-haiku-4.5', 'gray')}</td></tr>
-          <tr><td><b>RECON</b></td><td>Company Intel</td><td>${badge('claude-haiku-4.5', 'gray')}</td></tr>
-          <tr><td><b>SUBMIT</b></td><td>Application Engine</td><td>${badge('claude-haiku-4.5', 'gray')}</td></tr>
-          <tr><td><b>LEDGER</b></td><td>Pipeline Tracker</td><td>${badge('claude-haiku-4.5', 'gray')}</td></tr>
-          <tr><td><b>GUARDIAN</b></td><td>Safety Layer</td><td>${badge('claude-haiku-4.5', 'gray')}</td></tr>
+          <tr><td><b>ORBI</b> ${tip('Master orchestrator. Runs the pipeline end-to-end: SCOUT → RECON → GUARDIAN preflight → TAILOR → LEDGER → COACH. Started from the Dashboard "Run" button.')}</td><td>Master Orchestrator</td><td>${badge('claude-sonnet-4', 'blue')}</td></tr>
+          <tr><td><b>TAILOR</b> ${tip('Generates a tailored resume + cover letter for each qualified job. Outputs PDF + editable plain text. Costs the most per job because it makes two Sonnet calls.')}</td><td>Document Generator</td><td>${badge('claude-sonnet-4', 'blue')}</td></tr>
+          <tr><td><b>COACH</b> ${tip('Builds interview prep packs from your resume + the job description. Triggered when LEDGER moves an application into phone_screen / interview stages, or on demand.')}</td><td>Interview Prep</td><td>${badge('claude-sonnet-4', 'blue')}</td></tr>
+          <tr><td><b>SCOUT</b> ${tip('Finds job postings across 7 search providers (Tavily → Brave → SerpAPI → ...). Scores each result against your profile using deterministic JS rules — no AI calls, no cost.')}</td><td>Job Discovery</td><td>${badge('claude-haiku-4.5', 'gray')}</td></tr>
+          <tr><td><b>RECON</b> ${tip('Pulls company intel before TAILOR runs: culture, tech stack, salary benchmarks, recent news, red flags. Feeds context into the resume + cover letter prompts.')}</td><td>Company Intel</td><td>${badge('claude-haiku-4.5', 'gray')}</td></tr>
+          <tr><td><b>SUBMIT</b> ${tip('Submits the generated application to the ATS portal. Currently a stub — Net2Source / Lever / Greenhouse direct-submit is on the roadmap.')}</td><td>Application Engine</td><td>${badge('claude-haiku-4.5', 'gray')}</td></tr>
+          <tr><td><b>LEDGER</b> ${tip('Pipeline tracker — all applications, their stage (applied / viewed / interview / offer / etc.), notes, and follow-up dates live here. Visible on the Pipeline page.')}</td><td>Pipeline Tracker</td><td>${badge('claude-haiku-4.5', 'gray')}</td></tr>
+          <tr><td><b>GUARDIAN</b> ${tip('Safety layer. Enforces budget caps, per-day apply limits, rate limits, and field-level pauses. Runs a preflight check before each TAILOR call.')}</td><td>Safety Layer</td><td>${badge('claude-haiku-4.5', 'gray')}</td></tr>
         </tbody>
       </table>
     </div>

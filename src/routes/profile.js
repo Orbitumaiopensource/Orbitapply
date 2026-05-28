@@ -22,6 +22,7 @@ const STRING_MAX = {
   website: 500, location: 200, city: 100, state: 100, country: 100,
   workAuthorization: 100, companySize: 50, remotePreference: 20,
   noticePeriod: 50, coverLetterTone: 50, orbitPositioningStatement: 500,
+  productionSystems: 4000, techStackText: 4000,
 };
 
 const ARRAY_STRING_MAX = {
@@ -73,6 +74,8 @@ router.put('/', (req, res) => {
       'resume', 'coverLetterTone', 'orbitPositioningStatement',
       // Search quality controls
       'seniorityKeywords', 'excludeTitles', 'minFitScore', 'minQualifyScore',
+      // TAILOR source-material fields (used in resume + cover letter prompts)
+      'productionSystems', 'techStackText',
     ];
 
     const updated = { ...current };

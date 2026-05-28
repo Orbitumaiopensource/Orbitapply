@@ -40,6 +40,26 @@ async function loadPipeline() {
       <div class="stat-card"><div class="stat-label">Applied Today</div><div class="stat-value">${stats.today_count || 0}</div><div class="stat-sub">of 15 max</div></div>
     `;
 
+    if (!apps.length) {
+      el('kanban-board').innerHTML = `
+        <div class="card" style="width:100%;padding:0">
+          <div class="empty-state">
+            <div class="empty-state-title">No applications yet</div>
+            <div class="empty-state-sub">The pipeline tracks every job you apply to and where it stands. To get your first card here:</div>
+            <ol class="empty-state-steps">
+              <li>Open <b>SCOUT Results</b> and run a search (or import a job by URL).</li>
+              <li>Click <b>Generate Docs</b> on a job — TAILOR builds the resume + cover letter.</li>
+              <li>That job appears here in <b>Applied</b>. Drag the card across stages as you progress.</li>
+            </ol>
+            <div class="empty-state-actions">
+              <button class="btn btn-primary btn-sm" onclick="navigate('scout')">Go to SCOUT</button>
+              <button class="btn btn-secondary btn-sm" onclick="navigate('dashboard')">Open Dashboard</button>
+            </div>
+          </div>
+        </div>`;
+      return;
+    }
+
     const byStage = {};
     STAGES.forEach(s => { byStage[s] = []; });
     apps.forEach(a => { if (byStage[a.status]) byStage[a.status].push(a); });
@@ -156,7 +176,7 @@ async function openAppDetail(id) {
     const modal = el('app-detail-modal');
     modal.style.display = 'flex';
     modal.innerHTML = `
-      <div style="background:var(--bg-card);border-radius:var(--r-card);padding:28px;width:580px;max-height:80vh;overflow-y:auto;position:relative">
+      <div style="background:var(--bg-card);border-radius:var(--r-card);padding:28px;width:min(820px,92vw);max-height:90vh;overflow-y:auto;position:relative">
         <button onclick="closeModal()" style="position:absolute;top:14px;right:14px;background:none;border:none;font-size:20px;color:var(--text-2);line-height:1">✕</button>
         <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">${app.title}</h2>
         <p style="font-size:14px;color:var(--text-2);margin-bottom:16px">${app.company}</p>
@@ -214,18 +234,39 @@ async function openDocEditor(jobId, type) {
     const data = await API.get(`/api/v1/documents/${jobId}/text`);
     const text = type === 'resume' ? data.resume : data.cover;
     const label = type === 'resume' ? 'Resume' : 'Cover Letter';
+    const safeText = (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     editorDiv.innerHTML = `
-      <div style="font-size:12px;font-weight:600;margin-bottom:6px">${label} — editing plain text (Save regenerates the PDF)</div>
-      <textarea id="doc-editor-textarea" class="form-input form-textarea" rows="18"
-        style="font-family:monospace;font-size:11.5px;line-height:1.5;white-space:pre">${(text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
-      <div style="display:flex;gap:8px;margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+        <div style="font-size:12px;font-weight:600">${label} — full content (Save regenerates the PDF)</div>
+        <div style="font-size:11px;color:var(--text-muted)">Tip: edit freely, then click Save</div>
+      </div>
+      <textarea id="doc-editor-textarea" class="form-input form-textarea" wrap="soft"
+        style="width:100%;height:60vh;min-height:420px;font-family:'Consolas','Menlo',monospace;font-size:12px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;resize:vertical">${safeText}</textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
         <button class="btn btn-primary btn-sm" onclick="saveDocEdit('${jobId}','${type}')">Save &amp; Regenerate PDF</button>
+        <button class="btn btn-secondary btn-sm" onclick="toggleRegenPanel()">↻ Regenerate with AI</button>
         <button class="btn btn-secondary btn-sm" onclick="el('modal-doc-editor').innerHTML=''">Cancel</button>
+      </div>
+      <div id="doc-regen-panel" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-2)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:4px">Re-run TAILOR for this ${label.toLowerCase()}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Leave blank to regenerate with the default prompt, or add instructions (e.g. "shorter summary", "emphasize Python", "more concise"). Costs Sonnet tokens.</div>
+        <textarea id="doc-regen-prompt" class="form-input form-textarea" rows="3"
+          style="font-size:12px" placeholder="Optional instructions..."></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="doc-regen-btn" class="btn btn-primary btn-sm" onclick="regenerateDoc('${jobId}','${type}')">Run Regenerate</button>
+          <button class="btn btn-secondary btn-sm" onclick="toggleRegenPanel()">Close</button>
+        </div>
       </div>
       <div id="doc-editor-alert" style="margin-top:6px"></div>`;
   } catch (err) {
     editorDiv.innerHTML = `<div style="font-size:12px;color:var(--danger)">Failed to load document text.</div>`;
   }
+}
+
+function toggleRegenPanel() {
+  const panel = el('doc-regen-panel');
+  if (!panel) return;
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }
 
 async function saveDocEdit(jobId, type) {
@@ -237,6 +278,26 @@ async function saveDocEdit(jobId, type) {
     showAlert('doc-editor-alert', 'Saved — PDF regenerated.', 'success');
   } catch (err) {
     showAlert('doc-editor-alert', 'Save failed: ' + err.message, 'error');
+  }
+}
+
+async function regenerateDoc(jobId, type) {
+  const promptEl = el('doc-regen-prompt');
+  const btn = el('doc-regen-btn');
+  const textarea = el('doc-editor-textarea');
+  const prompt = promptEl ? promptEl.value : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Regenerating...'; }
+  clearAlert('doc-editor-alert');
+  try {
+    const r = await API.post(`/api/v1/documents/${jobId}/regenerate`, { type, prompt });
+    if (textarea && r.content) textarea.value = r.content;
+    const ats = r.atsScore ? ` (ATS ${r.atsScore}/100)` : '';
+    showAlert('doc-editor-alert', `Regenerated${ats} — PDF rebuilt.`, 'success');
+    if (promptEl) promptEl.value = '';
+  } catch (err) {
+    showAlert('doc-editor-alert', 'Regenerate failed: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Run Regenerate'; }
   }
 }
 

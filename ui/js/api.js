@@ -33,6 +33,11 @@ const API = {
 
 function el(id) { return document.getElementById(id); }
 
+function tip(text) {
+  const safe = String(text).replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<span class="tip" data-tip="${safe}" aria-label="${safe}" tabindex="0">?</span>`;
+}
+
 function badge(text, type = 'gray') {
   return `<span class="badge badge-${type}">${text}</span>`;
 }

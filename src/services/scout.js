@@ -9,8 +9,12 @@ const { FIT_SCORE_MIN } = require('../utils/constants');
 const { scanPortals } = require('./portalScan');
 
 const PROFILE_PATH = path.join(__dirname, '..', '..', 'memory', 'profile.json');
+const ACTIONS_PATH = path.join(__dirname, '..', '..', 'memory', 'scout-actions.json');
 const DEFAULT_WORKSPACE = path.join(__dirname, '..', '..', 'workspace-scout');
 const CONFIG_PATH = path.join(__dirname, '..', '..', 'orbitapply.json');
+
+// Statuses that hide a job from SCOUT results going forward
+const HIDDEN_ACTION_STATUSES = new Set(['applied', 'not_interested', 'deleted']);
 
 const MIN_DISPLAY_SCORE = 30;
 const MAX_RESULTS_PER_QUERY = 15;
@@ -671,7 +675,8 @@ async function importJobFromDoc({ title = '', company = '', salary = '', jdText 
 
 function getLatestResults() {
   const today = new Date().toISOString().split('T')[0];
-  return readJSON(path.join(getScoutWorkspace(), `results-${today}.json`), null);
+  const raw = readJSON(path.join(getScoutWorkspace(), `results-${today}.json`), null);
+  return _filterHidden(raw);
 }
 
 function getAllResults() {
@@ -697,7 +702,8 @@ function getAllResults() {
 }
 
 function getResultsByDate(date) {
-  return readJSON(path.join(getScoutWorkspace(), `results-${date}.json`), null);
+  const raw = readJSON(path.join(getScoutWorkspace(), `results-${date}.json`), null);
+  return _filterHidden(raw);
 }
 
 function purgeExpiredJobs(date) {
@@ -764,4 +770,128 @@ function rejectJob(jobId) {
   return job;
 }
 
-module.exports = { runScout, getLatestResults, getAllResults, getResultsByDate, buildCSV, approveJob, rejectJob, importJob, importJobFromDoc, purgeExpiredJobs };
+// ─── PERSISTENT JOB ACTIONS (applied / not_interested / deleted) ──────────────
+// Stored in memory/scout-actions.json. Any job whose fingerprint matches an
+// entry here is filtered out of SCOUT results — both today's list and future
+// runs — so the user only ever sees jobs they haven't yet acted on.
+function _normFp(s) {
+  return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function getJobFingerprint(job) {
+  if (!job) return '';
+  if (job.url) {
+    // Strip tracking params and trailing slash so the same posting fetched
+    // by different searches dedups to the same fingerprint.
+    return String(job.url).split('?')[0].replace(/\/$/, '').toLowerCase();
+  }
+  return `t:${_normFp(job.company)}|${_normFp(job.title)}`;
+}
+
+function _readActions() {
+  return readJSON(ACTIONS_PATH, { actions: {} });
+}
+
+function getHiddenFingerprints() {
+  const store = _readActions();
+  const out = new Set();
+  for (const [fp, entry] of Object.entries(store.actions || {})) {
+    if (entry && HIDDEN_ACTION_STATUSES.has(entry.status)) out.add(fp);
+  }
+  return out;
+}
+
+function _filterHidden(data) {
+  if (!data || !Array.isArray(data.results)) return data;
+  const hidden = getHiddenFingerprints();
+  const before = data.results.length;
+  const visible = data.results.filter(j => {
+    // Hide via the new fingerprint-based action store
+    if (hidden.has(getJobFingerprint(j))) return false;
+    // Also hide legacy Approve/Skip rows so the new 3-button flow has a clean slate
+    if (j.approved === true || j.rejected === true) return false;
+    return true;
+  });
+  if (visible.length === before) return data;
+  return { ...data, results: visible, hiddenCount: (data.hiddenCount || 0) + (before - visible.length) };
+}
+
+function recordJobAction(jobId, status) {
+  if (!HIDDEN_ACTION_STATUSES.has(status) && status !== 'cleared') {
+    throw new Error(`Invalid action status: ${status}`);
+  }
+  // Locate the job in today's results (most common). Fall back to scanning
+  // recent files so the action still records even if the user is viewing
+  // a historical result set.
+  const ws = getScoutWorkspace();
+  if (!fs.existsSync(ws)) return null;
+
+  const today = new Date().toISOString().split('T')[0];
+  const candidates = [
+    path.join(ws, `results-${today}.json`),
+    ...fs.readdirSync(ws)
+      .filter(f => f.startsWith('results-') && f.endsWith('.json'))
+      .sort().reverse()
+      .map(f => path.join(ws, f)),
+  ];
+
+  let job = null;
+  let foundPath = null;
+  for (const p of candidates) {
+    if (!fs.existsSync(p)) continue;
+    const data = readJSON(p, { results: [] });
+    const match = (data.results || []).find(j => j.id === jobId);
+    if (match) { job = match; foundPath = p; break; }
+  }
+  if (!job) return null;
+
+  const fp = getJobFingerprint(job);
+  if (!fp) return null;
+
+  const store = _readActions();
+  if (status === 'cleared') {
+    delete store.actions[fp];
+  } else {
+    store.actions[fp] = {
+      status,
+      url: job.url || '',
+      title: job.title || '',
+      company: job.company || '',
+      actionedAt: new Date().toISOString(),
+    };
+  }
+  writeJSON(ACTIONS_PATH, store);
+
+  // Mirror the state onto the stored result row so older code paths still
+  // see something sensible (approved=true on applied, rejected=true on the
+  // other two). The filter handles hiding at read time regardless.
+  if (foundPath) {
+    const data = readJSON(foundPath, { results: [] });
+    const row = (data.results || []).find(j => j.id === jobId);
+    if (row) {
+      if (status === 'applied') { row.approved = true; row.rejected = false; }
+      else if (status === 'not_interested' || status === 'deleted') {
+        row.rejected = true; row.approved = false;
+      } else if (status === 'cleared') {
+        row.approved = false; row.rejected = false;
+      }
+      row.action = status;
+      writeJSON(foundPath, data);
+    }
+  }
+
+  return { fingerprint: fp, status, job };
+}
+
+// Public read functions get the filtered view
+function _getLatestRaw() {
+  const today = new Date().toISOString().split('T')[0];
+  return readJSON(path.join(getScoutWorkspace(), `results-${today}.json`), null);
+}
+
+module.exports = {
+  runScout, getLatestResults, getAllResults, getResultsByDate, buildCSV,
+  approveJob, rejectJob, importJob, importJobFromDoc, purgeExpiredJobs,
+  // Action tracking
+  recordJobAction, getJobFingerprint, getHiddenFingerprints,
+};

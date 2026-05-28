@@ -90,6 +90,24 @@ router.post('/results/:id/approve', (req, res) => {
   }
 });
 
+// Mark a job as applied / not_interested / deleted. Any of these statuses
+// removes the job from current + future SCOUT result views (by fingerprint).
+router.post('/results/:id/action', (req, res) => {
+  try {
+    const { action } = req.body || {};
+    const allowed = ['applied', 'not_interested', 'deleted', 'cleared'];
+    if (!allowed.includes(action)) {
+      return res.status(400).json({ error: `action must be one of: ${allowed.join(', ')}` });
+    }
+    const result = scoutService.recordJobAction(req.params.id, action);
+    if (!result) return res.status(404).json({ error: 'Job not found in any saved results.' });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    logger.error(`POST /scout/results/:id/action failed: ${err.message}`, err);
+    res.status(500).json({ error: 'Failed to record job action.' });
+  }
+});
+
 router.post('/results/:id/reject', (req, res) => {
   try {
     const job = scoutService.rejectJob(req.params.id);

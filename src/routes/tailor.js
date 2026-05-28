@@ -2,6 +2,9 @@ const express = require('express');
 const { exec } = require('child_process');
 const router = express.Router();
 const { logger } = require('../utils/logger');
+const path = require('path');
+const fs = require('fs');
+const { readJSON, writeJSON } = require('../utils/fileStore');
 const { runTailor, getDocuments, getAllApplications, docExistsForJob, getApplicationsRoot } = require('../services/tailor');
 const scoutService = require('../services/scout');
 const ledger = require('../services/ledger');
@@ -56,7 +59,7 @@ router.post('/generate', async (req, res) => {
           a => a.resumePath === result.resumePath || (a.company === result.company && a.title === result.role)
         );
         if (!alreadyInPipeline) {
-          ledger.createApplication({
+          const created = ledger.createApplication({
             title: result.role,
             company: result.company,
             url: job.url || '',
@@ -67,6 +70,17 @@ router.post('/generate', async (req, res) => {
             reconPath: '',
             budgetUSD: 0.02,
           });
+          // Stamp the ledger application id into metadata.json so the doc
+          // editor / regenerate lookups can find this folder by application id.
+          try {
+            const metaPath = path.join(result.folder, 'metadata.json');
+            if (created?.id && fs.existsSync(metaPath)) {
+              const meta = readJSON(metaPath, {});
+              writeJSON(metaPath, { ...meta, applicationId: created.id });
+            }
+          } catch (stampErr) {
+            logger.warn(`[TAILOR] Failed to stamp applicationId: ${stampErr.message}`);
+          }
           logger.info(`[TAILOR] Pipeline entry created for ${result.company} — ${result.role}`);
         }
       } catch (ledgerErr) {

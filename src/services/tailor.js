@@ -19,11 +19,14 @@ function getApplicationsRoot() {
 }
 
 function slugify(str) {
-  return (str || 'unknown')
+  const out = (str || 'unknown')
     .replace(/[<>:"/\\|?*]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 60);
+    .replace(/[.\s]+$/g, '')
+    .slice(0, 60)
+    .replace(/[.\s]+$/g, '');
+  return out || 'unknown';
 }
 
 function fileSlug(str) {
@@ -421,6 +424,34 @@ async function buildJobDescriptionPDF(job, descText, outputPath) {
   });
 }
 
+// ─── INPUT NORMALISATION ──────────────────────────────────────────────────────
+// Make profile fields presentable in the final document, regardless of how the
+// user typed them. Pure functions — no profile.json mutation.
+function cleanName(raw) {
+  const s = (raw || '').trim();
+  if (!s) return 'Candidate';
+  return s.split(/\s+/)
+    .map(part => {
+      if (!part) return part;
+      if (/^[A-Z]/.test(part)) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join(' ');
+}
+
+function cleanTitle(raw) {
+  const s = (raw || '').trim();
+  if (!s) return '';
+  // Many users paste a comma-separated list of every role they would accept —
+  // for the cover letter sign-off and header, use only the first segment.
+  const first = s.split(/[,|/]/)[0].trim();
+  return first.length > 80 ? first.slice(0, 80).trim() : first;
+}
+
+function formatTodayLong() {
+  return new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
 // ─── MAIN TAILOR FUNCTION ─────────────────────────────────────────────────────
 function inferIndustry(job, profile, reconIntel) {
   const targets = (profile.targetIndustries || []);
@@ -429,15 +460,8 @@ function inferIndustry(job, profile, reconIntel) {
   return match || targets[0] || 'Technology';
 }
 
-async function runTailor(job, reconIntel = null, sessionId = null) {
-  const profile = readJSON(PROFILE_PATH, {});
-  const baseResume = getBaseResume(profile);
-  const industry = inferIndustry(job, profile, reconIntel);
-  const educationLines = (profile.education || [])
-    .map(e => `${e.degree} — ${e.school}${e.year ? ` | ${e.year}` : ''}`)
-    .join('\n');
-
-  const reconContext = reconIntel ? `
+function buildReconContext(reconIntel) {
+  return reconIntel ? `
 COMPANY INTELLIGENCE:
 - Culture: ${reconIntel.culture?.summary || 'unknown'}
 - Tech Stack: ${(reconIntel.techStack || []).join(', ')}
@@ -446,9 +470,35 @@ COMPANY INTELLIGENCE:
 - Recent News: ${(reconIntel.recentNews || []).join('; ')}
 - Red Flags: ${(reconIntel.redFlags || []).join('; ') || 'none'}
 ` : '';
+}
 
-  // ── RESUME PROMPT ──────────────────────────────────────────────────────────
-  const resumePrompt = `
+function buildResumePrompt(job, profile, reconIntel) {
+  const baseResume = getBaseResume(profile);
+  const industry = inferIndustry(job, profile, reconIntel);
+  const educationLines = (profile.education || [])
+    .map(e => `${e.degree} — ${e.school}${e.year ? ` | ${e.year}` : ''}`)
+    .join('\n');
+  const reconContext = buildReconContext(reconIntel);
+
+  const displayName = cleanName(profile.name);
+  const displayTitle = cleanTitle(profile.title);
+
+  const productionSystemsBlock = (profile.productionSystems || '').trim()
+    ? `\nCANDIDATE'S PRODUCTION SYSTEMS (use these verbatim — these are real, shipped work; never invent additional ones):
+${profile.productionSystems.trim()}
+`
+    : '';
+
+  const techStackBlock = (profile.techStackText || '').trim()
+    ? `\nCANDIDATE'S TECHNOLOGY STACK (use these verbatim — these are tools the candidate has actually used):
+${profile.techStackText.trim()}
+`
+    : '';
+
+  const hasProdSystems = !!(profile.productionSystems || '').trim();
+  const hasTechStack = !!(profile.techStackText || '').trim();
+
+  return `
 You are an expert resume writer and ATS optimization specialist.
 
 JOB TARGET:
@@ -461,66 +511,73 @@ TARGET INDUSTRY: ${industry}
 (Tailor terminology, domain examples, and keyword emphasis toward the ${industry} industry while staying factually accurate.)
 
 CANDIDATE PROFILE:
-- Name: ${profile.name}
-- Current Title: ${profile.title}
+- Name: ${displayName}
+- Target Title for this role: ${displayTitle || job.title}
 - Location: ${profile.location || ''}
 - Email: ${profile.email || ''}
 - LinkedIn: ${profile.linkedinUrl || ''}
+- Website: ${profile.website || ''}
 - Skills: ${(profile.skills || []).join(', ')}
-- Years Experience: ${profile.yearsExperience}
 - ORBIT Positioning: ${profile.orbitPositioningStatement || 'AI Solutions Specialist delivering measurable outcomes'}
 - Education & Certifications:
 ${educationLines || '(see base resume)'}
-
+${productionSystemsBlock}${techStackBlock}
 COMPLETE BASE RESUME — use ALL sections, never truncate:
 ${baseResume.slice(0, 16000)}
 
 YOUR TASK:
-Rewrite this resume tailored for the job above.
+Rewrite this resume tailored for the job above. Aim for the tone of a senior practitioner who ships, not a brochure.
 
-STRICT RULES:
-1. PRESERVE every single job title, company name, date, and certification — never drop any
-2. Mirror JD language naturally in Summary and Skills sections only
-3. Inject relevant keywords from the JD into Skills/Competencies section
-4. Rewrite Summary (3-4 sentences) to target this specific role and company
-5. Keep all bullet points factually accurate — reword only, never fabricate metrics
-6. Preserve the ORBIT Framework mention in Summary
-7. Output CLEAN PLAIN TEXT — absolutely NO markdown symbols (no ##, no **, no *, no _, no #)
-8. Use ALL CAPS for section headers
-9. Use the bullet character • for all bullet points
-10. Job lines must follow format: Job Title | Company Name | Start Year – End Year
-11. ALWAYS include the EDUCATION & CERTIFICATIONS section in full — never drop a degree or certification
-12. Frame the Summary and Core Competencies for the ${industry} industry without inventing experience
+ABSOLUTE PROHIBITIONS (these cause the output to be rejected):
+- DO NOT fabricate or invent any metric, percentage, dollar figure, headcount, or timeframe. If the base resume does not state a specific number, do not produce one. Examples of forbidden inventions: "reduced response time 73%", "$2.3M savings", "increased CSAT 41%", "improved efficiency by 60%".
+- DO NOT use empty buzzword phrases. Forbidden: "leveraged synergies", "intelligent automation and agentic systems deployment", "drove cross-functional excellence", "unlocked transformative value", "harness artificial intelligence", "bridging the gap between AI possibility and enterprise reality".
+- DO NOT invent projects, products, or technologies the candidate has not used. The PRODUCTION SYSTEMS BUILT section MUST come from the CANDIDATE'S PRODUCTION SYSTEMS block above (or be omitted if that block is empty).
+- DO NOT pad bullets to look longer. A short specific bullet beats a long vague one.
+- DO NOT echo the JD wording back as if it were the candidate's achievement.
+
+WRITING RULES:
+1. PRESERVE every job title, company name, date, and certification from the base resume — never drop any.
+2. Mirror JD language naturally only in the Executive Summary and Core Competencies sections.
+3. Executive Summary: 3–4 sentences. Open with what the candidate ships, not what they "leverage". Name 1–2 concrete capabilities the JD is asking for.
+4. Bullets: lead with the verb-of-action and end with the concrete outcome. Use specifics from the base resume only.
+5. Job header line format exactly: "Job Title | Company Name | Start Year – End Year" (or "– Present").
+6. Output CLEAN PLAIN TEXT — no markdown symbols (no ##, **, *, _, #, backticks).
+7. ALL CAPS for every section header. Use • for all bullets.
+8. Frame Summary + Core Competencies toward the ${industry} industry without inventing experience.
+9. If the candidate has a Microsoft / Azure / AWS / GCP skill GAP that is relevant to this JD, address it honestly: name the candidate's actual stack and how it maps to the JD's stack. Do NOT pretend to have experience they don't have.
 
 EXACT OUTPUT STRUCTURE — follow this precisely:
 
 [Full Name]
-[Target Job Title for this role]
-[Location] • [Email] • [LinkedIn]
+[Target Title for this role]
+[Location]  |  [Email]  |  [LinkedIn]${profile.website ? '  |  [Website]' : ''}
 
 EXECUTIVE SUMMARY
-[3-4 sentences targeting this role and company]
+[3–4 sentences targeting this role and company]
 
 CORE COMPETENCIES
-[Skill 1] • [Skill 2] • [Skill 3] • [Skill 4] • [Skill 5]
-[Skill 6] • [Skill 7] • [Skill 8] • [Skill 9] • [Skill 10]
-
+[Skill 1]  ·  [Skill 2]  ·  [Skill 3]  ·  [Skill 4]  ·  [Skill 5]
+[Skill 6]  ·  [Skill 7]  ·  [Skill 8]  ·  [Skill 9]  ·  [Skill 10]
+${hasTechStack ? `
+TECHNOLOGY STACK
+[Use the CANDIDATE'S TECHNOLOGY STACK block above verbatim, one category per line, format: "Category: items, items, items"]
+` : ''}${hasProdSystems ? `
+PRODUCTION SYSTEMS BUILT
+[Each entry from the CANDIDATE'S PRODUCTION SYSTEMS block becomes one paragraph or one bullet. Keep the exact stack and outcome wording.]
+` : ''}
 PROFESSIONAL EXPERIENCE
 
-[Job Title] | [Company Name] | [Start Year] – [End Year or Present]
-• [Achievement bullet 1]
+[Job Title] | [Company Name] | [Start Month Year] – [End Month Year or Present]
+• [Achievement bullet 1 — specific action + specific outcome]
 • [Achievement bullet 2]
 • [Achievement bullet 3]
 
-[Repeat above block for EVERY job — never skip any role]
-
-KEY AI DELIVERY PROJECTS
-[Project Name] | [Stack and outcome in one line]
+[Repeat the above block for EVERY job in the base resume — never skip any role]
 
 EDUCATION & CERTIFICATIONS
 • [Degree/Cert] — [Institution] | [Year]
 
-Return ONLY this JSON — no preamble, no explanation, no markdown:
+Return ONLY this JSON — no preamble, no explanation, no markdown fences:
 {
   "atsScore": 85,
   "keywordsInjected": ["keyword1", "keyword2", "keyword3"],
@@ -528,24 +585,60 @@ Return ONLY this JSON — no preamble, no explanation, no markdown:
   "notes": "brief note on tailoring approach"
 }
 `;
+}
 
-  // ── COVER LETTER PROMPT ───────────────────────────────────────────────────
-  const coverPrompt = `
+function buildCoverPrompt(job, profile, reconIntel) {
+  const reconContext = buildReconContext(reconIntel);
+
+  const displayName = cleanName(profile.name);
+  const displayTitle = cleanTitle(profile.title);
+  const today = formatTodayLong();
+
+  const productionSystemsBlock = (profile.productionSystems || '').trim()
+    ? `\nCANDIDATE'S SHIPPED PRODUCTION SYSTEMS (use these verbatim as proof — never invent additional ones):
+${profile.productionSystems.trim()}
+`
+    : '';
+
+  const techStackBlock = (profile.techStackText || '').trim()
+    ? `\nCANDIDATE'S ACTUAL TECHNOLOGY STACK (use these tool names verbatim when relevant — never claim tools not listed here):
+${profile.techStackText.trim()}
+`
+    : '';
+
+  // Closing line: a single clean professional title + optional website. Never
+  // dump the raw multi-title comma soup that some users keep in profile.title.
+  const signOffLines = [
+    displayName,
+    displayTitle,
+    profile.website || '',
+  ].filter(Boolean).join('\n');
+
+  return `
 You are an expert cover letter writer using the ORBIT Framework.
 
 JOB: ${job.title} at ${job.company}
 JOB DESCRIPTION: ${job.snippet || ''}
 
 CANDIDATE:
-- Name: ${profile.name}
-- Title: ${profile.title}
+- Name: ${displayName}
+- Title: ${displayTitle || '(none provided)'}
 - ORBIT Statement: ${profile.orbitPositioningStatement || ''}
 - Key Skills: ${(profile.skills || []).slice(0, 10).join(', ')}
-${reconContext}
+- Location: ${profile.location || ''}
+- Email: ${profile.email || ''}
+- LinkedIn: ${profile.linkedinUrl || ''}
+- Website: ${profile.website || ''}
+${reconContext}${productionSystemsBlock}${techStackBlock}
+
+TODAY'S DATE (use exactly this string — do not invent a different date): ${today}
 
 Write a cover letter using the ORBIT Framework with the EXACT structure below (plain text, no markdown):
 
-[Today's date, e.g. May 26, 2026]
+${displayName}
+${[profile.location, profile.email, profile.linkedinUrl, profile.website].filter(Boolean).join('  |  ')}
+
+${today}
 
 Hiring Team
 ${job.company}
@@ -555,25 +648,40 @@ Re: ${job.title}
 
 Dear Hiring Team,
 
-[Para 1 — OUTCOME: specific result this candidate delivers to ${job.company}]
+[Para 1 — OPENING: lead with a concrete sentence about what the candidate ships. If CANDIDATE'S SHIPPED PRODUCTION SYSTEMS are provided, name ONE or TWO of them by their actual stack. Never lead with "I am excited to apply", "I am writing to apply", or generic buzzwords.]
 
-[Para 2 — REVENUE LEVER + BOTTLENECK: why ${job.company} needs this person now]
+[Para 2 — STACK FIT: describe the candidate's actual stack and how it maps to what ${job.company} needs. If there is an honest skill gap relative to the JD, name the candidate's equivalent and how they will close it — do not pretend to have experience they don't have.]
 
-[Para 3 — IMPLEMENT: concrete 30-60-90 day plan for this specific role]
+[Para 3 — METHOD: describe a concrete consulting/delivery methodology the candidate uses (e.g. ORBIT Framework if applicable). Be specific about what the method does, not abstract.]
 
-[Para 4 — TRACK: 2-3 quantified past achievements as proof, then a professional closing sentence]
+[Para 4 — 30/60/90 PLAN: concrete actions for the first 30 days, days 31–60, and by day 90. Tie each to ${job.company}'s stated needs in the JD.]
 
-Sincerely,
+[Para 5 — CLOSE: a single short paragraph that names why ${job.company}'s positioning fits the candidate, and invites a conversation. No "available immediately for a 20-minute call" filler.]
 
-${profile.name}
-${profile.title || ''}
+Warm regards,
 
-RULES:
-- 280-320 words in the four body paragraphs only
-- Never start Para 1 with "I am excited to apply" or "I am writing to apply"
-- Professional, direct, no filler phrases
-- No markdown symbols, no JSON, no extra commentary outside the letter
+${signOffLines}
+
+ABSOLUTE PROHIBITIONS:
+- DO NOT fabricate any metric, percentage, dollar figure, headcount, or timeframe. Forbidden inventions: "reduced response time 73%", "$2.3M savings", "increased CSAT 41%", "61% faster". If the candidate's base data does not state a specific number, do not produce one.
+- DO NOT invent projects, clients, tools, or platforms the candidate has not actually used.
+- DO NOT use these phrases or any variant: "intelligent automation", "agentic systems deployment", "harness artificial intelligence", "unlock transformative value", "drive measurable impact", "bridge the gap between possibility and reality".
+- DO NOT echo the JD requirements back as if they were the candidate's achievements.
+
+WRITING RULES:
+- 320–420 words across the five body paragraphs combined.
+- Plain text only. No markdown (no **, ##, *, _, #, backticks).
+- Direct, confident, specific. Sentence length varied. No buzzwords.
+- The sign-off block MUST be exactly the lines provided above — name, then clean single title, then website. Never paste a comma-separated list of multiple titles.
+
+Output ONLY the letter text from the name/contact header through the sign-off block — no preamble, no explanation, no JSON.
 `;
+}
+
+async function runTailor(job, reconIntel = null, sessionId = null) {
+  const profile = readJSON(PROFILE_PATH, {});
+  const resumePrompt = buildResumePrompt(job, profile, reconIntel);
+  const coverPrompt = buildCoverPrompt(job, profile, reconIntel);
 
   // Resume and cover prompts are built independently above and the cover
   // call does not consume the resume result — generate both concurrently
@@ -757,15 +865,56 @@ function docExistsForJob(jobId) {
 }
 
 // ─── EDITABLE TEXT HELPERS ────────────────────────────────────────────────────
-function _findAppFolder(jobId) {
+// Accept either a scout jobId (matches meta.jobId) or a ledger applicationId
+// (matches meta.applicationId, or falls back to title/company lookup via the
+// ledger). On fallback match we backfill meta.applicationId so subsequent
+// lookups are O(1).
+function _findAppFolder(identifier) {
   const appsRoot = getApplicationsRoot();
   if (!fs.existsSync(appsRoot)) return null;
-  for (const folder of fs.readdirSync(appsRoot)) {
+
+  const folders = fs.readdirSync(appsRoot).filter(f =>
+    fs.statSync(path.join(appsRoot, f)).isDirectory()
+  );
+
+  // Direct match: applicationId or jobId in metadata.json
+  for (const folder of folders) {
     const metaPath = path.join(appsRoot, folder, 'metadata.json');
     if (!fs.existsSync(metaPath)) continue;
     const meta = readJSON(metaPath, {});
-    if (meta.jobId === jobId) return { folderPath: path.join(appsRoot, folder), meta };
+    if (meta.applicationId === identifier || meta.jobId === identifier) {
+      return { folderPath: path.join(appsRoot, folder), meta };
+    }
   }
+
+  // Fallback: identifier might be a ledger application UUID — resolve via
+  // ledger then match by title (case-insensitive) and company when present.
+  try {
+    const ledger = require('./ledger');
+    const app = ledger.getById(identifier);
+    if (app && app.title) {
+      const targetTitle = (app.title || '').trim().toLowerCase();
+      const targetCompany = (app.company || '').trim().toLowerCase();
+      for (const folder of folders) {
+        const metaPath = path.join(appsRoot, folder, 'metadata.json');
+        if (!fs.existsSync(metaPath)) continue;
+        const meta = readJSON(metaPath, {});
+        const metaTitle = (meta.title || '').trim().toLowerCase();
+        const metaCompany = (meta.company || '').trim().toLowerCase();
+        if (metaTitle === targetTitle && (targetCompany === '' || metaCompany === targetCompany)) {
+          // Backfill applicationId so the next call hits the fast path
+          try {
+            const folderPath = path.join(appsRoot, folder);
+            writeJSON(path.join(folderPath, 'metadata.json'), { ...meta, applicationId: identifier });
+            return { folderPath, meta: { ...meta, applicationId: identifier } };
+          } catch (_) {
+            return { folderPath: path.join(appsRoot, folder), meta };
+          }
+        }
+      }
+    }
+  } catch (_) { /* ledger lookup is best-effort */ }
+
   return null;
 }
 
@@ -782,32 +931,114 @@ function getDocumentText(jobId) {
   };
 }
 
+// Derive an absolute path under the current folder for an edit-text or PDF
+// file. Falls back to meta value when the folder location can't be inferred
+// (e.g. legacy metadata where meta.<key> already holds an absolute path).
+function _resolveInFolder(folderPath, metaValue, defaultName) {
+  if (metaValue) {
+    const base = path.basename(metaValue);
+    if (base) return path.join(folderPath, base);
+  }
+  return path.join(folderPath, defaultName);
+}
+
 async function saveDocumentText(jobId, type, content) {
   const found = _findAppFolder(jobId);
   if (!found) throw new Error('Application folder not found.');
   const { folderPath, meta } = found;
 
   if (type === 'resume') {
-    const editPath = meta.resumeEditPath || path.join(folderPath, 'resume_edit.txt');
+    const editPath = _resolveInFolder(folderPath, meta.resumeEditPath, 'resume_edit.txt');
     fs.writeFileSync(editPath, content, 'utf8');
     if (meta.resumePdfPath && meta.resumePdfPath.endsWith('.pdf')) {
-      await buildResumePDF(content, meta.resumePdfPath);
-      logger.info(`[TAILOR] Resume PDF regenerated for jobId=${jobId}`);
+      const pdfPath = _resolveInFolder(folderPath, meta.resumePdfPath, '');
+      await buildResumePDF(content, pdfPath);
+      logger.info(`[TAILOR] Resume PDF regenerated for id=${jobId}`);
     }
   } else if (type === 'cover') {
-    const editPath = meta.coverEditPath || path.join(folderPath, 'cover_edit.txt');
+    const editPath = _resolveInFolder(folderPath, meta.coverEditPath, 'cover_edit.txt');
     fs.writeFileSync(editPath, content, 'utf8');
     if (meta.coverPdfPath && meta.coverPdfPath.endsWith('.pdf')) {
-      await buildCoverPDF(content, meta.coverPdfPath);
-      logger.info(`[TAILOR] Cover PDF regenerated for jobId=${jobId}`);
+      const pdfPath = _resolveInFolder(folderPath, meta.coverPdfPath, '');
+      const profile = readJSON(PROFILE_PATH, {});
+      await buildCoverPDF(content, pdfPath, profile);
+      logger.info(`[TAILOR] Cover PDF regenerated for id=${jobId}`);
     }
   } else {
     throw new Error(`Unknown document type: ${type}`);
   }
 }
 
+async function regenerateDocument(jobId, type, userPrompt = '') {
+  if (type !== 'resume' && type !== 'cover') {
+    throw new Error(`Unknown document type: ${type}`);
+  }
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY is not configured.');
+  }
+
+  const found = _findAppFolder(jobId);
+  if (!found) throw new Error('Application folder not found.');
+  const { folderPath, meta } = found;
+
+  const jobPath = path.join(folderPath, 'job.json');
+  if (!fs.existsSync(jobPath)) throw new Error('Job context not found for this application.');
+  const job = readJSON(jobPath, {});
+
+  const profile = readJSON(PROFILE_PATH, {});
+  const trimmed = (userPrompt || '').trim();
+  const userInstruction = trimmed
+    ? `\n\nADDITIONAL USER INSTRUCTIONS (apply on top of all rules above, but never violate the structural rules):\n${trimmed.slice(0, 2000)}\n`
+    : '';
+
+  const sessionId = `tailor-regen-${type}-${Date.now()}`;
+
+  if (type === 'resume') {
+    const prompt = buildResumePrompt(job, profile, null) + userInstruction;
+    const result = await runAgent('tailor', prompt, sessionId);
+    const parsed = parseJSONFromContent(result.content);
+    const resumeText = parsed?.resumeText || parsed?.resumeMarkdown || result.content;
+
+    const editPath = _resolveInFolder(folderPath, meta.resumeEditPath, 'resume_edit.txt');
+    fs.writeFileSync(editPath, resumeText, 'utf8');
+    if (meta.resumePdfPath && meta.resumePdfPath.endsWith('.pdf')) {
+      const pdfPath = _resolveInFolder(folderPath, meta.resumePdfPath, '');
+      await buildResumePDF(resumeText, pdfPath);
+    }
+
+    if (parsed?.atsScore || parsed?.keywordsInjected) {
+      const metaPath = path.join(folderPath, 'metadata.json');
+      const nextMeta = { ...meta };
+      if (parsed.atsScore) nextMeta.atsScore = parsed.atsScore;
+      if (parsed.keywordsInjected) nextMeta.keywordsInjected = parsed.keywordsInjected;
+      nextMeta.regeneratedAt = new Date().toISOString();
+      writeJSON(metaPath, nextMeta);
+    }
+
+    logger.info(`[TAILOR] Resume regenerated for jobId=${jobId}${trimmed ? ' (with user prompt)' : ''}`);
+    return { content: resumeText, atsScore: parsed?.atsScore || null };
+  }
+
+  const prompt = buildCoverPrompt(job, profile, null) + userInstruction;
+  const result = await runAgent('tailor', prompt, sessionId);
+  const coverText = result.content;
+
+  const editPath = _resolveInFolder(folderPath, meta.coverEditPath, 'cover_edit.txt');
+  fs.writeFileSync(editPath, coverText, 'utf8');
+  if (meta.coverPdfPath && meta.coverPdfPath.endsWith('.pdf')) {
+    const pdfPath = _resolveInFolder(folderPath, meta.coverPdfPath, '');
+    await buildCoverPDF(coverText, pdfPath, profile);
+  }
+
+  const metaPath = path.join(folderPath, 'metadata.json');
+  writeJSON(metaPath, { ...meta, regeneratedAt: new Date().toISOString() });
+
+  logger.info(`[TAILOR] Cover letter regenerated for jobId=${jobId}${trimmed ? ' (with user prompt)' : ''}`);
+  return { content: coverText };
+}
+
 module.exports = {
   runTailor, getDocuments, getAllApplications, docExistsForJob,
   getApplicationsRoot, buildResumePDF, buildCoverPDF,
-  getDocumentText, saveDocumentText,
+  getDocumentText, saveDocumentText, regenerateDocument,
 };

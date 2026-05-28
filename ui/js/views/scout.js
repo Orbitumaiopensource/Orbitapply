@@ -127,7 +127,23 @@ async function loadScoutResults() {
     }
 
     if (!results.length) {
-      container.innerHTML = `<div class="card"><div class="empty-state"><div class="empty-state-title">No results yet.</div><div class="empty-state-sub">Run a job search from the Dashboard to see results here.</div></div></div>`;
+      container.innerHTML = `
+        <div class="card">
+          <div class="empty-state">
+            <div class="empty-state-title">No SCOUT results yet</div>
+            <div class="empty-state-sub">SCOUT searches 7 providers (Tavily, Brave, SerpAPI, etc.) for jobs matching your profile, then scores each against your target roles, location, and seniority. No AI calls — it's free.</div>
+            <ol class="empty-state-steps">
+              <li>Set <b>Target Roles</b>, <b>Target Locations</b>, and <b>Skills</b> on your <b>Profile</b> page.</li>
+              <li>Start a run from the <b>Dashboard</b> ("Run" button) — or click <b>+ Import Job</b> above to add one by URL.</li>
+              <li>Results appear here. Fit ≥ 60 lets you generate tailored docs; ≥ 70 auto-qualifies for TAILOR.</li>
+            </ol>
+            <div class="empty-state-actions">
+              <button class="btn btn-primary btn-sm" onclick="navigate('dashboard')">Open Dashboard</button>
+              <button class="btn btn-secondary btn-sm" onclick="navigate('profile')">Edit Profile</button>
+              <button class="btn btn-secondary btn-sm" onclick="showImportModal()">+ Import Job by URL</button>
+            </div>
+          </div>
+        </div>`;
       return;
     }
 
@@ -226,14 +242,18 @@ function renderScoutRow(job, rowNum) {
       ? `<button class="btn btn-secondary btn-sm" id="genbtn-${job.id}" onclick="generateDocs('${job.id}')" style="font-size:11px;padding:4px 10px;white-space:nowrap">📄 Generate</button>`
       : `<span style="font-size:11px;color:var(--text-muted)">Score too low</span>`;
 
-  const actionCell = approved
-    ? `<span style="font-size:11px;padding:2px 8px;background:#D1FAE5;color:#065F46;border-radius:20px;font-weight:600">✓ Approved</span>`
-    : rejected
-      ? `<span style="font-size:11px;padding:2px 8px;background:#FEE2E2;color:#991B1B;border-radius:20px;font-weight:600">Skipped</span>`
-      : `<div style="display:flex;gap:5px">
-          <button class="btn btn-primary btn-sm" onclick="approveJob('${job.id}')" style="font-size:11px;padding:4px 10px">Approve</button>
-          <button class="btn btn-secondary btn-sm" onclick="rejectJob('${job.id}')" style="font-size:11px;padding:4px 10px">Skip</button>
-         </div>`;
+  const actionCell = `
+    <div style="display:flex;gap:4px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="markJobAction('${job.id}','applied')"
+        title="Mark as applied — won't appear in future SCOUT results"
+        style="font-size:11px;padding:4px 9px;background:#D1FAE5;color:#065F46;border:none;font-weight:600;border-radius:6px;cursor:pointer">✓ Applied</button>
+      <button class="btn btn-sm" onclick="markJobAction('${job.id}','not_interested')"
+        title="Not interested — hide and never show again"
+        style="font-size:11px;padding:4px 9px;background:#FEF3C7;color:#92400E;border:none;font-weight:600;border-radius:6px;cursor:pointer">Not Interested</button>
+      <button class="btn btn-sm" onclick="markJobAction('${job.id}','deleted')"
+        title="Delete this job — remove from list and never show again"
+        style="font-size:11px;padding:4px 9px;background:#FEE2E2;color:#991B1B;border:none;font-weight:600;border-radius:6px;cursor:pointer">🗑 Delete</button>
+    </div>`;
 
   return `
     <tr id="scout-row-${job.id}" style="background:${rowBg};opacity:${rowOpacity};border-bottom:1px solid var(--border)">
@@ -332,21 +352,24 @@ async function openApplicationsFolder() {
   }
 }
 
-async function approveJob(id) {
-  try {
-    await API.post(`/api/v1/scout/results/${id}/approve`);
-    await loadScoutResults();
-  } catch (err) {
-    showAlert('scout-alert', err.message, 'error');
+async function markJobAction(id, action) {
+  const row = el(`scout-row-${id}`);
+  // Optimistic fade — feels snappier than waiting for the round-trip
+  if (row) {
+    row.style.transition = 'opacity 0.25s, background 0.25s';
+    row.style.opacity = '0.35';
+    row.style.background = action === 'applied' ? '#F0FDF4'
+      : action === 'deleted' ? '#FEF2F2'
+      : '#FFFBEB';
   }
-}
-
-async function rejectJob(id) {
   try {
-    await API.post(`/api/v1/scout/results/${id}/reject`);
+    await API.post(`/api/v1/scout/results/${id}/action`, { action });
+    // Re-fetch so the in-memory list (_allResults) drops the hidden job and
+    // counts / filters re-compute correctly.
     await loadScoutResults();
   } catch (err) {
-    showAlert('scout-alert', err.message, 'error');
+    if (row) { row.style.opacity = '1'; row.style.background = ''; }
+    showAlert('scout-alert', 'Action failed: ' + err.message, 'error');
   }
 }
 
