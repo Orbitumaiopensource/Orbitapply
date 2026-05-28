@@ -9,10 +9,7 @@ apikeys.md
 node_modules/
 
 # Runtime data (personal — never commit)
-memory/profile.json
-memory/protected.json
-memory/blacklist.json
-memory/resume.md
+memory/
 sessions/sessions.json
 workspace-scout/
 workspace-tailor/
@@ -39,3 +36,6 @@ coverage/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Claude Code — local-machine settings (permission rules, hooks, etc.)
+.claude/settings.local.json
