@@ -93,9 +93,13 @@ notepad memory\resume.md
 Paste your resume in Markdown format.
 
 ### 11. Run
-```powershell
-pnpm dev
 ```
+start orbitapply
+```
+This opens OrbitApply in your browser automatically.
+
+> **For developers:** Use `pnpm dev` instead to run with nodemon hot reload.
+
 Open [http://localhost:3000](http://localhost:3000)
 
 ---
