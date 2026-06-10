@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 - `pnpm install` — install dependencies (pnpm only; `pnpm-lock.yaml` is the lockfile, not `package-lock.json`)
+- `start orbitapply` — user-facing launch command (Windows, from project folder); production mode, auto-opens browser at http://localhost:3000. Delegates to `start-windows.bat`.
 - `pnpm dev` — run with nodemon (hot reload), serves UI + API at http://localhost:3000
 - `pnpm start` — run without reload
 - `pnpm test` — Jest (`--passWithNoTests`; there is currently no test suite)
