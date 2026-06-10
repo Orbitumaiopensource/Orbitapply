@@ -392,13 +392,23 @@ Set-Content -Path memory\protected.json -Value '{"contacts":[]}'
 
 ## Running the app
 
-### Development mode (recommended — auto-restarts on file changes)
+### Windows terminal (recommended)
+
+From the project folder:
+
+```
+start orbitapply
+```
+
+This runs production mode and automatically opens http://localhost:3000 in your browser.
+
+### Development mode (hot reload — for code changes)
 
 ```bash
 pnpm dev
 ```
 
-### Production mode
+### Production mode (no reload)
 
 ```bash
 pnpm start
