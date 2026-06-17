@@ -40,7 +40,7 @@ All AI agents go through `runAgent(agentId, userPrompt, sessionId, extraContext)
 - `orbitapply.json` — runtime config: models, budget caps, GUARDIAN limits, scout thresholds, workspace paths. Read at runtime via `readJSON`; not all keys are mirrored in `constants.js` (e.g. expanded `guardian.humanPauseFields`).
 - `src/utils/constants.js` — hardcoded defaults/thresholds (budget $5/day, 15 applies/day, 45s rate limit, score minimums, pipeline stages).
 - `src/config/jobSites.js` — single source of all job sources. Add a site here (one line); do not hardcode sites in `scout.js`.
-- `src/utils/searchProvider.js` — 7-provider waterfall (Tavily → Brave → SerpAPI → Bing → Google → Jina → DuckDuckGo). Fallback order is intentional; DuckDuckGo needs no key.
+- `src/utils/searchProvider.js` — 8-provider waterfall (Perplexity → Tavily → Brave → SerpAPI → Bing → Google → Jina → DuckDuckGo). Fallback order is intentional; DuckDuckGo needs no key.
 - `src/data/genaiInterviewBank.js` — COACH's question bank. Original content only; never paste third-party question lists.
 - `src/utils/fileStore.js` — all JSON/log persistence (`readJSON`/`writeJSON`/`appendLog`/`ensureFile`); auto-creates parent dirs. All persistence is flat files — there is no database.
 - `src/utils/logger.js` — Winston logger. Use it, not `console.log`.

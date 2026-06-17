@@ -19,7 +19,8 @@ Complete setup instructions for Windows and Mac.
 | Service | Purpose | Get Key |
 |---|---|---|
 | Anthropic Claude | Resume tailoring, company intel, interview prep | [console.anthropic.com](https://console.anthropic.com) |
-| Tavily | Job search and company research | [tavily.com](https://tavily.com) |
+| Perplexity | Primary job search provider (tried first) | [perplexity.ai/settings/api](https://www.perplexity.ai/settings/api) |
+| Tavily | Job search and company research (fallback) | [tavily.com](https://tavily.com) |
 
 ---
 

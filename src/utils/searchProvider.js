@@ -1,13 +1,14 @@
 /**
  * OrbitApply — Multi-Provider Search Engine
  * ─────────────────────────────────────────
- * Waterfall fallback: Tavily → Brave → SerpAPI → Bing → Google → DuckDuckGo → Jina
+ * Waterfall fallback: Perplexity → Tavily → Brave → SerpAPI → Bing → Google → Jina → DuckDuckGo
  *
  * Each provider is tried in priority order.
  * If a provider has no API key, returns 0 results, or throws — next provider is tried.
  * DuckDuckGo requires no API key and is always the final fallback.
  *
  * Add keys to .env:
+ *   PERPLEXITY_API_KEY
  *   TAVILY_API_KEY
  *   BRAVE_API_KEY
  *   SERPAPI_KEY
@@ -23,55 +24,96 @@ const { logger } = require('../utils/logger');
 
 const PROVIDERS = [
   {
+    name: 'perplexity',
+    envKey: 'PERPLEXITY_API_KEY',
+    priority: 1,
+    rateLimit: 'paid',
+    search: searchPerplexity,
+  },
+  {
     name: 'tavily',
     envKey: 'TAVILY_API_KEY',
-    priority: 1,
+    priority: 2,
     rateLimit: 'paid',
     search: searchTavily,
   },
   {
     name: 'brave',
     envKey: 'BRAVE_API_KEY',
-    priority: 2,
+    priority: 3,
     rateLimit: '2000/month free',
     search: searchBrave,
   },
   {
     name: 'serpapi',
     envKey: 'SERPAPI_KEY',
-    priority: 3,
+    priority: 4,
     rateLimit: '100/month free',
     search: searchSerpAPI,
   },
   {
     name: 'bing',
     envKey: 'BING_SEARCH_KEY',
-    priority: 4,
+    priority: 5,
     rateLimit: '1000/month free',
     search: searchBing,
   },
   {
     name: 'google',
     envKey: 'GOOGLE_CSE_KEY',
-    priority: 5,
+    priority: 6,
     rateLimit: '100/day free',
     search: searchGoogle,
   },
   {
     name: 'jina',
     envKey: 'JINA_API_KEY',
-    priority: 6,
+    priority: 7,
     rateLimit: 'free tier',
     search: searchJina,
   },
   {
     name: 'duckduckgo',
     envKey: null, // No key required
-    priority: 7,
+    priority: 8,
     rateLimit: 'free, no key',
     search: searchDuckDuckGo,
   },
 ];
+
+// ─── Perplexity Search API ────────────────────────────────────────────────────
+
+async function searchPerplexity(query, depth = 'basic', domains = []) {
+  const key = process.env.PERPLEXITY_API_KEY;
+  if (!key) return [];
+
+  const response = await axios.post(
+    'https://api.perplexity.ai/search',
+    {
+      query,
+      max_results: 15,
+      search_recency_filter: 'week', // bias to the last ~7 days for fresh postings
+      search_domain_filter: domains.length > 0 ? domains.slice(0, 20) : undefined,
+    },
+    {
+      headers: {
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 15000,
+    }
+  );
+
+  const results = response.data?.results || [];
+  return normalise(results.map(r => ({
+    title: r.title || '',
+    url: r.url || '',
+    snippet: r.snippet || '',
+    // `last_updated` is the truer freshness signal (page last changed);
+    // `date` is closer to Perplexity's crawl/retrieval date. Prefer the former.
+    _date: r.last_updated || r.date || null,
+  })), 'perplexity');
+}
 
 // ─── Tavily ───────────────────────────────────────────────────────────────────
 
@@ -290,6 +332,9 @@ function normalise(results, provider) {
       url: (r.url || '').trim(),
       snippet: (r.snippet || r.content || '').trim().slice(0, 400),
       _provider: provider,
+      // Posting/freshness date when the provider supplies one (e.g. Perplexity);
+      // null otherwise. Consumed by SCOUT for `postedAt` and newest-first sorting.
+      _date: r._date || null,
     }));
 }
 
