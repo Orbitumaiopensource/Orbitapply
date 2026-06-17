@@ -1,9 +1,9 @@
 const PIPELINE_STAGES = ['applied', 'viewed', 'phone_screen', 'interview_1', 'interview_2', 'offer', 'rejected', 'withdrawn'];
 
 const AGENT_MODELS = {
-  ORBI: 'claude-sonnet-4-20250514',
-  TAILOR: 'claude-sonnet-4-20250514',
-  COACH: 'claude-sonnet-4-20250514',
+  ORBI: 'claude-sonnet-4-6',
+  TAILOR: 'claude-sonnet-4-6',
+  COACH: 'claude-sonnet-4-6',
   SCOUT: 'claude-haiku-4-5-20251001',
   RECON: 'claude-haiku-4-5-20251001',
   SUBMIT: 'claude-haiku-4-5-20251001',

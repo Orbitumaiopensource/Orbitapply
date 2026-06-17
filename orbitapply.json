@@ -33,13 +33,13 @@
     },
     "overrides": {
       "orbi": {
-        "model": "claude-sonnet-4-20250514"
+        "model": "claude-sonnet-4-6"
       },
       "tailor": {
-        "model": "claude-sonnet-4-20250514"
+        "model": "claude-sonnet-4-6"
       },
       "coach": {
-        "model": "claude-sonnet-4-20250514"
+        "model": "claude-sonnet-4-6"
       }
     }
   },
