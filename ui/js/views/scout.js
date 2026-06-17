@@ -77,6 +77,11 @@ let _allResults = [];
 let _activeFilter = 0;
 let _autoEligible = {};
 
+// Jobs scoring below this are hidden from the results list — they're the ones
+// the UI marks "Score too low" (can't generate docs). Manually imported jobs
+// are kept regardless, since they were chosen deliberately.
+const MIN_VISIBLE_SCORE = 60;
+
 function setScoreFilter(min) {
   _activeFilter = min;
   [0, 60, 70, 80, 90].forEach(v => {
@@ -115,7 +120,9 @@ async function loadScoutResults() {
     for (const j of (autoElig.jobs || [])) {
       if (j.eligible) _autoEligible[j.id] = true;
     }
-    const results = data.results || [];
+    const allResults = data.results || [];
+    // Hide jobs whose score is too low to act on; keep manual imports.
+    const results = allResults.filter(j => j.fitScore >= MIN_VISIBLE_SCORE || j.manuallyImported);
     const container = el('scout-content');
 
     _allResults = results;
