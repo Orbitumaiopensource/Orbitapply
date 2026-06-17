@@ -96,6 +96,9 @@ function buildSearchQueries(profile, goal = '') {
   const items = [];
   const atsStr = 'site:lever.co OR site:greenhouse.io OR site:jobs.ashbyhq.com OR site:myworkdayjobs.com';
   const adpStr = 'site:myjobs.adp.com OR site:linkedin.com/jobs';
+  // Aggregators — LinkedIn / Indeed / Glassdoor job pages. These sites block
+  // crawlers heavily, so yield is lower than direct ATS, but they broaden reach.
+  const aggStr = 'site:linkedin.com/jobs OR site:indeed.com OR site:glassdoor.com';
 
   const goalTerm = (goal || '').trim();
   const profileRoles = (profile.targetRoles || []);
@@ -109,24 +112,27 @@ function buildSearchQueries(profile, goal = '') {
     }
   }
 
-  for (let i = 0; i < roleTerms.length && items.length < 12; i++) {
+  for (let i = 0; i < roleTerms.length && items.length < 16; i++) {
     const term = roleTerms[i];
     const isGoal = i === 0 && Boolean(goalTerm);
     const depth = isGoal ? 'advanced' : 'basic';
     items.push({ query: `"${term}" remote job ${atsStr}`, depth });
     items.push({ query: `"${term}" apply now ${adpStr}`, depth: 'basic' });
+    items.push({ query: `"${term}" remote ${aggStr}`, depth: 'basic' }); // LinkedIn/Indeed/Glassdoor
     if (isGoal) {
       items.push({ query: `"${term}" hiring remote ${atsStr}`, depth: 'advanced' });
     }
   }
 
   const primaryTerm = goalTerm || profileRoles[0] || '';
-  if (primaryTerm && items.length < 15) {
+  if (primaryTerm && items.length < 19) {
     items.push({ query: `"${primaryTerm}" job opening ${atsStr}`, depth: 'basic' });
     items.push({ query: `"${primaryTerm}" remote position ${adpStr}`, depth: 'basic' });
+    // General web (Google-style) — no site: filter, surfaces anything indexed.
+    items.push({ query: `"${primaryTerm}" remote jobs hiring apply`, depth: 'basic' });
   }
 
-  return items.slice(0, 15);
+  return items.slice(0, 20);
 }
 
 function capitalise(str) {
@@ -400,7 +406,11 @@ function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
     if (locationMatch === 0 && wantsRemote) locationMatch = 5;
   }
 
-  let salaryMatch = 0;
+  // Salary is UNKNOWN by default → neutral credit (10/20). Most ATS search
+  // snippets omit salary, so scoring missing data as 0 was deflating every
+  // otherwise-strong match by 20 points. We only assign 0 when a salary is
+  // actually present AND parses out of range (a real negative signal).
+  let salaryMatch = 10;
   if (salary) {
     const nums = (salary.match(/[\d,]+/g) || [])
       .map(n => parseInt(n.replace(/,/g, ''), 10))
@@ -410,8 +420,9 @@ function scoreFit(jobTitle, location, salary, fullText, profile, goal = '') {
       const mid = expanded.reduce((a, b) => a + b, 0) / expanded.length;
       const pMin = profile.salaryMin || 0;
       const pMax = profile.salaryMax || 9999999;
-      if (mid >= pMin && mid <= pMax) salaryMatch = 20;
-      else if (mid >= pMin * 0.75 && mid <= pMax * 1.25) salaryMatch = 10;
+      if (mid >= pMin && mid <= pMax) salaryMatch = 20;        // in range
+      else if (mid >= pMin * 0.75 && mid <= pMax * 1.25) salaryMatch = 10; // near range
+      else salaryMatch = 0;                                    // present but out of range → penalize
     }
   }
 

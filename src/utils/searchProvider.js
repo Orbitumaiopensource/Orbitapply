@@ -91,7 +91,7 @@ async function searchPerplexity(query, depth = 'basic', domains = []) {
     'https://api.perplexity.ai/search',
     {
       query,
-      max_results: 15,
+      max_results: 20, // Perplexity max — more candidates per query
       search_recency_filter: 'week', // bias to the last ~7 days for fresh postings
       search_domain_filter: domains.length > 0 ? domains.slice(0, 20) : undefined,
     },
