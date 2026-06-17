@@ -234,10 +234,7 @@ function renderScoutRow(job, rowNum) {
   const fitBg = job.fitScore >= 80 ? '#D1FAE5' : job.fitScore >= 70 ? '#FEF3C7' : job.fitScore >= 60 ? '#DBEAFE' : '#F3F4F6';
 
   const docCell = hasDoc
-    ? `<div style="display:flex;flex-direction:column;gap:3px">
-        <span style="font-size:11px;padding:2px 8px;background:#D1FAE5;color:#065F46;border-radius:20px;font-weight:600;width:fit-content">✓ Ready</span>
-        <span style="font-size:10px;color:var(--text-muted)">ATS ${docApp.atsScore || '?'}/100</span>
-       </div>`
+    ? readyDocCell(job.id, docApp.atsScore)
     : canGenerate
       ? `<button class="btn btn-secondary btn-sm" id="genbtn-${job.id}" onclick="generateDocs('${job.id}')" style="font-size:11px;padding:4px 10px;white-space:nowrap">📄 Generate</button>`
       : `<span style="font-size:11px;color:var(--text-muted)">Score too low</span>`;
@@ -284,6 +281,23 @@ function renderScoutRow(job, rowNum) {
     </tr>`;
 }
 
+// Markup for the "docs ready" state — shows the Ready badge, ATS score, and a
+// Regenerate button. Shared by the initial render and the post-generate update
+// so the Regenerate button is always present once docs exist.
+function readyDocCell(jobId, atsScore) {
+  return `<div style="display:flex;flex-direction:column;gap:4px">
+      <span style="font-size:11px;padding:2px 8px;background:#D1FAE5;color:#065F46;border-radius:20px;font-weight:600;width:fit-content">✓ Ready</span>
+      <span style="font-size:10px;color:var(--text-muted)">ATS ${atsScore || '?'}/100</span>
+      <button class="btn btn-sm" id="genbtn-${jobId}" onclick="regenerateDocs('${jobId}')" title="Rebuild the resume + cover letter from scratch (makes a new AI call)" style="font-size:10px;padding:2px 8px;background:#EEF2FF;color:#4338CA;border:none;font-weight:600;border-radius:6px;cursor:pointer;width:fit-content">↻ Regenerate</button>
+    </div>`;
+}
+
+// Regenerate overwrites existing docs and costs an AI call, so confirm first.
+async function regenerateDocs(jobId) {
+  if (!confirm('Regenerate documents? This overwrites the current resume and cover letter and makes a new AI call.')) return;
+  return generateDocs(jobId);
+}
+
 async function generateDocs(jobId) {
   const btn = el(`genbtn-${jobId}`);
   const cell = el(`doc-cell-${jobId}`);
@@ -298,11 +312,7 @@ async function generateDocs(jobId) {
       return;
     }
     _docStatus[jobId] = { jobId, atsScore: r.atsScore };
-    if (cell) cell.innerHTML = `
-      <div style="display:flex;flex-direction:column;gap:3px">
-        <span style="font-size:11px;padding:2px 8px;background:#D1FAE5;color:#065F46;border-radius:20px;font-weight:600;width:fit-content">✓ Ready</span>
-        <span style="font-size:10px;color:var(--text-muted)">ATS ${r.atsScore || '?'}/100</span>
-      </div>`;
+    if (cell) cell.innerHTML = readyDocCell(jobId, r.atsScore);
   } catch (err) {
     if (cell) cell.innerHTML = `<span style="font-size:11px;color:#EF4444" title="${escapeHtml(err.message)}">⚠ Failed</span>`;
     showAlert('scout-alert', err.message, 'error');
