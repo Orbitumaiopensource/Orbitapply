@@ -264,7 +264,10 @@ function renderScoutRow(job, rowNum) {
           ${job.manuallyImported ? `<span style="font-size:10px;font-weight:600;padding:1px 6px;background:#EEF2FF;color:#4338CA;border-radius:20px;white-space:nowrap">Manual</span>` : ''}
           ${_autoEligible[job.id] ? `<span title="Eligible for autonomous apply — see the Auto-Apply page" style="font-size:10px;font-weight:600;padding:1px 6px;background:#D1FAE5;color:#065F46;border-radius:20px;white-space:nowrap">⚡ Auto</span>` : ''}
         </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${escapeHtml(job.company)}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+          <span style="font-size:11px;color:var(--text-muted)">${escapeHtml(job.company)}</span>
+          ${freshnessLabel(job.postedAt)}
+        </div>
       </td>
       <td style="padding:12px 8px;font-size:12px;color:var(--text-muted)">${escapeHtml(job.location || '—')}</td>
       <td style="padding:12px 8px;font-size:12px;color:var(--text-muted)">${escapeHtml(job.salary || '—')}</td>
@@ -377,6 +380,18 @@ function escapeHtml(str) {
   return String(str || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Render a small freshness badge from a job's postedAt date.
+// Returns '' when there is no real date (e.g. the 'recent' placeholder).
+function freshnessLabel(postedAt) {
+  const t = Date.parse(postedAt);
+  if (Number.isNaN(t)) return '';
+  const days = Math.floor((Date.now() - t) / 86400000);
+  const text = days <= 0 ? 'Today' : days === 1 ? '1 day ago' : `${days} days ago`;
+  // Green ≤1 day, amber ≤3 days, gray otherwise.
+  const [bg, fg] = days <= 1 ? ['#D1FAE5', '#065F46'] : days <= 3 ? ['#FEF3C7', '#92400E'] : ['#F3F4F6', '#6B7280'];
+  return `<span title="Posted/updated ${escapeHtml(postedAt)}" style="font-size:10px;font-weight:600;padding:1px 6px;background:${bg};color:${fg};border-radius:20px;white-space:nowrap">${text}</span>`;
 }
 
 async function purgeExpiredJobs() {

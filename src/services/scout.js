@@ -467,12 +467,15 @@ function extractAndScoreJobs(rawResults, profile, goal = '') {
       fitBreakdown: breakdown,
       snippet,
       searchProvider: r._provider || 'unknown',
-      postedAt: 'recent',
+      // Real posting/freshness date when the search provider supplied one
+      // (Perplexity does); falls back to 'recent' for providers/portals that don't.
+      postedAt: r._date || 'recent',
       approved: false,
       rejected: false,
     });
   });
 
+  // Keep the top 50 by fit (the pipeline selects best-fit jobs from this set).
   return jobs.sort((a, b) => b.fitScore - a.fitScore).slice(0, 50);
 }
 
@@ -523,7 +526,18 @@ async function runScout(goal = '') {
   const preserved = (existing.results || []).filter(j => j.manuallyImported === true);
   const scoredUrls = new Set(scored.map(j => j.url));
   const uniquePreserved = preserved.filter(j => !scoredUrls.has(j.url));
-  const merged = [...scored, ...uniquePreserved].sort((a, b) => b.fitScore - a.fitScore);
+  // Newest-first for display: jobs with a real posting date sort by recency,
+  // fit score breaks ties; undated jobs ('recent') fall to the bottom by fit.
+  // (ORBI re-sorts its own copy by fit, so display order doesn't affect the pipeline.)
+  const postedTime = (j) => {
+    const t = Date.parse(j.postedAt);
+    return Number.isNaN(t) ? -Infinity : t;
+  };
+  const merged = [...scored, ...uniquePreserved].sort((a, b) => {
+    const ta = postedTime(a), tb = postedTime(b);
+    if (tb !== ta) return tb - ta;
+    return b.fitScore - a.fitScore;
+  });
 
   const output = {
     agentId: 'scout',

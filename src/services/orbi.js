@@ -126,11 +126,12 @@ async function executeRun(sessionId, goal) {
     // of fit score. Auto-discovered jobs still gated by FIT_SCORE_MIN.
     const qualifiedJobs = (scoutOutput.results || []).filter(
       j => !j.rejected && (j.manuallyImported || j.fitScore >= FIT_SCORE_MIN)
-    );
+    ).sort((a, b) => b.fitScore - a.fitScore);
     logger.info(`[ORBI] ${qualifiedJobs.length} qualified jobs (fit >= ${FIT_SCORE_MIN} or manually imported)`);
 
     // Per-run caps (config-overridable) so the run finishes in minutes, not
-    // 15+. Jobs are already sorted by fitScore desc, so we take the top N.
+    // 15+. We sort by fitScore desc above and take the top N (SCOUT stores
+    // results newest-first for display, so we re-sort here by fit ourselves).
     const cfg = readJSON(CONFIG_PATH, {});
     const maxRecon = cfg?.run?.maxReconPerRun ?? MAX_RECON_PER_RUN;
     const maxTailor = cfg?.run?.maxTailorPerRun ?? MAX_TAILOR_PER_RUN;
