@@ -25,7 +25,7 @@
   "outputFolder": "./Apply",
   "agents": {
     "defaults": {
-      "model": "claude-haiku-4-5-20251001",
+      "model": "grok-4-fast",
       "subagents": {
         "maxDepth": 2,
         "maxConcurrent": 4
@@ -33,13 +33,13 @@
     },
     "overrides": {
       "orbi": {
-        "model": "claude-sonnet-4-20250514"
+        "model": "grok-4"
       },
       "tailor": {
-        "model": "claude-sonnet-4-20250514"
+        "model": "grok-4"
       },
       "coach": {
-        "model": "claude-sonnet-4-20250514"
+        "model": "grok-4"
       }
     }
   },

@@ -269,13 +269,13 @@ Before you start, install:
 
 OrbitApply requires two API keys.
 
-### 1. Anthropic Claude (required)
+### 1. xAI Grok (required)
 
-All AI writing — resume tailoring, cover letters, company intelligence, interview coaching — runs on Claude.
+All AI writing — resume tailoring, cover letters, company intelligence, interview coaching — runs on Grok.
 
-1. Sign up at [console.anthropic.com](https://console.anthropic.com)
+1. Sign up at [console.x.ai](https://console.x.ai)
 2. Go to **API Keys** → **Create Key**
-3. Copy the key — it starts with `sk-ant-`
+3. Copy the key — it starts with `xai-`
 
 ### 2. Tavily (required)
 
@@ -311,7 +311,7 @@ cp .env.example .env
 Open `.env` and fill in your real keys:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-your-key-here
+GROK_API_KEY=xai-your-key-here
 TAVILY_API_KEY=tvly-your-key-here
 PORT=3000
 NODE_ENV=development
@@ -479,7 +479,7 @@ GUARDIAN checks this list at the SCOUT filter stage and again before every TAILO
 
 ## Budget controls
 
-The default daily spend cap is **$5 USD** across all Anthropic API calls. Configurable in `orbitapply.json`:
+The default daily spend cap is **$5 USD** across all Grok API calls. Configurable in `orbitapply.json`:
 
 ```json
 "budget": {

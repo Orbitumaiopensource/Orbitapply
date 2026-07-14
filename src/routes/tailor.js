@@ -45,8 +45,8 @@ router.post('/generate', async (req, res) => {
       return res.status(404).json({ error: `Job ${jobId} not found in results for ${today}.` });
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return res.status(503).json({ error: 'ANTHROPIC_API_KEY is not configured.' });
+    if (!process.env.GROK_API_KEY) {
+      return res.status(503).json({ error: 'GROK_API_KEY is not configured.' });
     }
 
     logger.info(`[TAILOR] On-demand generation for ${job.company} — ${job.title}`);

@@ -1,7 +1,7 @@
 /**
  * OrbitApply — Multi-Provider Search Engine
  * ─────────────────────────────────────────
- * Waterfall fallback: Tavily → Brave → SerpAPI → Bing → Google → DuckDuckGo → Jina
+ * Waterfall fallback: Tavily → Perplexity → Brave → SerpAPI → Bing → Google → Jina → DuckDuckGo
  *
  * Each provider is tried in priority order.
  * If a provider has no API key, returns 0 results, or throws — next provider is tried.
@@ -9,6 +9,7 @@
  *
  * Add keys to .env:
  *   TAVILY_API_KEY
+ *   PERPLEXITY_API_KEY
  *   BRAVE_API_KEY
  *   SERPAPI_KEY
  *   BING_SEARCH_KEY
@@ -30,44 +31,51 @@ const PROVIDERS = [
     search: searchTavily,
   },
   {
+    name: 'perplexity',
+    envKey: 'PERPLEXITY_API_KEY',
+    priority: 2,
+    rateLimit: 'paid',
+    search: searchPerplexity,
+  },
+  {
     name: 'brave',
     envKey: 'BRAVE_API_KEY',
-    priority: 2,
+    priority: 3,
     rateLimit: '2000/month free',
     search: searchBrave,
   },
   {
     name: 'serpapi',
     envKey: 'SERPAPI_KEY',
-    priority: 3,
+    priority: 4,
     rateLimit: '100/month free',
     search: searchSerpAPI,
   },
   {
     name: 'bing',
     envKey: 'BING_SEARCH_KEY',
-    priority: 4,
+    priority: 5,
     rateLimit: '1000/month free',
     search: searchBing,
   },
   {
     name: 'google',
     envKey: 'GOOGLE_CSE_KEY',
-    priority: 5,
+    priority: 6,
     rateLimit: '100/day free',
     search: searchGoogle,
   },
   {
     name: 'jina',
     envKey: 'JINA_API_KEY',
-    priority: 6,
+    priority: 7,
     rateLimit: 'free tier',
     search: searchJina,
   },
   {
     name: 'duckduckgo',
     envKey: null, // No key required
-    priority: 7,
+    priority: 8,
     rateLimit: 'free, no key',
     search: searchDuckDuckGo,
   },
@@ -93,6 +101,36 @@ async function searchTavily(query, depth = 'basic', domains = []) {
   );
 
   return normalise(response.data?.results || [], 'tavily');
+}
+
+// ─── Perplexity (Sonar) ───────────────────────────────────────────────────────
+
+async function searchPerplexity(query, depth = 'basic', domains = []) {
+  const key = process.env.PERPLEXITY_API_KEY;
+  if (!key) return [];
+
+  const response = await axios.post(
+    'https://api.perplexity.ai/chat/completions',
+    {
+      model: depth === 'advanced' ? 'sonar-pro' : 'sonar',
+      messages: [{ role: 'user', content: query }],
+      search_domain_filter: domains.length > 0 ? domains.slice(0, 10) : undefined,
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 20000,
+    }
+  );
+
+  const results = response.data?.search_results || response.data?.citations || [];
+  return normalise(results.map(r => (
+    typeof r === 'string'
+      ? { title: r, url: r, snippet: '' }
+      : { title: r.title || r.url, url: r.url, snippet: r.snippet || r.date || '' }
+  )), 'perplexity');
 }
 
 // ─── Brave Search ─────────────────────────────────────────────────────────────

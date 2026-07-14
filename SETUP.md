@@ -18,7 +18,7 @@ Complete setup instructions for Windows and Mac.
 
 | Service | Purpose | Get Key |
 |---|---|---|
-| Anthropic Claude | Resume tailoring, company intel, interview prep | [console.anthropic.com](https://console.anthropic.com) |
+| xAI Grok | Resume tailoring, company intel, interview prep | [console.x.ai](https://console.x.ai) |
 | Tavily | Job search and company research | [tavily.com](https://tavily.com) |
 
 ---

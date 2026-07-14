@@ -1,7 +1,9 @@
 const fs = require('fs');
 const path = require('path');
-const Anthropic = require('@anthropic-ai/sdk');
+const axios = require('axios');
 const { logger } = require('../utils/logger');
+
+const GROK_API_URL = 'https://api.x.ai/v1/chat/completions';
 const { readJSON, writeJSON } = require('../utils/fileStore');
 const CONFIG_PATH = path.join(__dirname, '..', '..', 'orbitapply.json');
 const SESSIONS_PATH = path.join(__dirname, '..', '..', 'sessions', 'sessions.json');
@@ -27,7 +29,7 @@ function getModel(agentId) {
   const config = loadConfig();
   const overrides = config?.agents?.overrides || {};
   if (overrides[agentId]?.model) return overrides[agentId].model;
-  return config?.agents?.defaults?.model || 'claude-haiku-4-5-20251001';
+  return config?.agents?.defaults?.model || 'grok-4-fast';
 }
 
 function saveSession(agentId, messages, sessionId) {
@@ -53,56 +55,64 @@ function saveSession(agentId, messages, sessionId) {
 async function runAgent(agentId, userPrompt, sessionId = null, extraContext = '') {
   const soul = getSoulMd(agentId);
   const model = getModel(agentId);
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const apiKey = process.env.GROK_API_KEY;
 
   const sid = sessionId || `${agentId}-${Date.now()}`;
   const systemPrompt = extraContext ? `${soul}\n\n## Current Context\n${extraContext}` : soul;
 
-  const messages = [{ role: 'user', content: userPrompt }];
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
   const timeoutMs = AGENT_TIMEOUTS_MS[agentId] || AGENT_TIMEOUTS_MS.default;
   const timeoutSecs = timeoutMs / 1000;
 
   logger.info(`[${agentId.toUpperCase()}] Running with model ${model} | session ${sid}`);
 
   try {
-    const response = await Promise.race([
-      client.messages.create({
-        model,
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages,
-      }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Agent request timed out after ${timeoutSecs}s`)), timeoutMs)
-      ),
-    ]);
+    const response = await axios.post(
+      GROK_API_URL,
+      { model, max_tokens: 4096, messages },
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: timeoutMs,
+      }
+    );
 
-    const assistantContent = response.content[0]?.text || '';
+    const assistantContent = response.data.choices?.[0]?.message?.content || '';
+    const usage = {
+      input_tokens: response.data.usage?.prompt_tokens || 0,
+      output_tokens: response.data.usage?.completion_tokens || 0,
+    };
+
     messages.push({ role: 'assistant', content: assistantContent });
     saveSession(agentId, messages, sid);
 
-    logger.info(`[${agentId.toUpperCase()}] Complete | tokens: ${response.usage?.input_tokens || 0}in + ${response.usage?.output_tokens || 0}out`);
+    logger.info(`[${agentId.toUpperCase()}] Complete | tokens: ${usage.input_tokens}in + ${usage.output_tokens}out`);
 
     return {
       sessionId: sid,
       agentId,
       content: assistantContent,
-      usage: response.usage,
+      usage,
       model,
     };
   } catch (err) {
-    logger.error(`[${agentId.toUpperCase()}] Failed: ${err.message}`, err);
-    const msg = err.message || '';
-    if (msg.includes('usage limits') || msg.includes('API usage limits')) {
-      const match = msg.match(/regain access on ([^"]+)/);
-      const until = match ? ` Access restores on ${match[1].trim()}.` : '';
-      throw new Error(`Anthropic API usage limit reached.${until} Please add credits or wait for reset.`);
+    const status = err.response?.status;
+    const apiMsg = err.response?.data?.error?.message || err.message || '';
+    logger.error(`[${agentId.toUpperCase()}] Failed: ${apiMsg}`, err);
+
+    if (status === 429) {
+      throw new Error(`Grok API usage limits reached. Please add credits or wait for reset.`);
     }
-    if (msg.includes('401') || msg.includes('authentication')) {
-      throw new Error(`Anthropic API key is invalid or missing. Check your .env file.`);
+    if (status === 401 || status === 403) {
+      throw new Error(`Grok API key is invalid or missing. Check your .env file.`);
     }
-    if (msg.includes('timed out')) {
-      throw new Error(`Generation timed out — Anthropic API took too long. Wait a moment and try again.`);
+    if (err.code === 'ECONNABORTED' || apiMsg.includes('timeout')) {
+      throw new Error(`Generation timed out — Grok API took too long after ${timeoutSecs}s. Wait a moment and try again.`);
     }
     throw new Error(`Agent ${agentId} failed. Check server logs.`);
   }

@@ -40,7 +40,7 @@ router.post('/:jobId/regenerate', async (req, res) => {
     const knownError = err.message?.includes('usage limits')
       || err.message?.includes('API usage limits')
       || err.message?.includes('timed out')
-      || err.message?.includes('ANTHROPIC_API_KEY')
+      || err.message?.includes('GROK_API_KEY')
       || err.message?.includes('Application folder not found')
       || err.message?.includes('Job context not found');
     res.status(knownError ? 503 : 500).json({

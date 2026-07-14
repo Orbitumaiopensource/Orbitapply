@@ -10,7 +10,6 @@
     "coverage": "jest --coverage --passWithNoTests"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.50.4",
     "axios": "^1.7.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

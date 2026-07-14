@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^0.50.4
-        version: 0.50.4
       axios:
         specifier: ^1.7.2
         version: 1.16.0
@@ -66,11 +63,6 @@ importers:
         version: 5.4.21(@types/node@25.7.0)
 
 packages:
-
-  '@anthropic-ai/sdk@0.50.4':
-    resolution: {integrity: sha512-zZOWyIuznx2uqiRcCNuidkAsLC8IBHgS9lTwSVEB29sUCwEcqL95MWpWP1nccHSKfiZga+hbZaI0btR2zjuMmw==}
-    engines: {node: '>= 20'}
-    hasBin: true
 
   '@babel/code-frame@7.29.0':
     resolution: {integrity: sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw==}
@@ -2154,8 +2146,6 @@ packages:
     engines: {node: '>=10'}
 
 snapshots:
-
-  '@anthropic-ai/sdk@0.50.4': {}
 
   '@babel/code-frame@7.29.0':
     dependencies:

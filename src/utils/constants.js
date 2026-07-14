@@ -1,14 +1,14 @@
 const PIPELINE_STAGES = ['applied', 'viewed', 'phone_screen', 'interview_1', 'interview_2', 'offer', 'rejected', 'withdrawn'];
 
 const AGENT_MODELS = {
-  ORBI: 'claude-sonnet-4-20250514',
-  TAILOR: 'claude-sonnet-4-20250514',
-  COACH: 'claude-sonnet-4-20250514',
-  SCOUT: 'claude-haiku-4-5-20251001',
-  RECON: 'claude-haiku-4-5-20251001',
-  SUBMIT: 'claude-haiku-4-5-20251001',
-  LEDGER: 'claude-haiku-4-5-20251001',
-  GUARDIAN: 'claude-haiku-4-5-20251001',
+  ORBI: 'grok-4',
+  TAILOR: 'grok-4',
+  COACH: 'grok-4',
+  SCOUT: 'grok-4-fast',
+  RECON: 'grok-4-fast',
+  SUBMIT: 'grok-4-fast',
+  LEDGER: 'grok-4-fast',
+  GUARDIAN: 'grok-4-fast',
 };
 
 const AGENT_IDS = Object.keys(AGENT_MODELS).map(k => k.toLowerCase());
