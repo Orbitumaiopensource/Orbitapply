@@ -102,13 +102,14 @@ async function runAgent(agentId, userPrompt, sessionId = null, extraContext = ''
     };
   } catch (err) {
     const status = err.response?.status;
-    const apiMsg = err.response?.data?.error?.message || err.message || '';
+    const errField = err.response?.data?.error;
+    const apiMsg = (typeof errField === 'string' ? errField : errField?.message) || err.message || '';
     logger.error(`[${agentId.toUpperCase()}] Failed: ${apiMsg}`, err);
 
     if (status === 429) {
       throw new Error(`Grok API usage limits reached. Please add credits or wait for reset.`);
     }
-    if (status === 401 || status === 403) {
+    if (status === 401 || status === 403 || /api key/i.test(apiMsg)) {
       throw new Error(`Grok API key is invalid or missing. Check your .env file.`);
     }
     if (err.code === 'ECONNABORTED' || apiMsg.includes('timeout')) {
